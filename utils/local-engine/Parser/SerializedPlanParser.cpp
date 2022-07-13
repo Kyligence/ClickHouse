@@ -1135,6 +1135,32 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     }
     table_join->addDisjunct();
 
+    table_join->setColumnsFromJoinedTable(right->getCurrentDataStream().header.getNamesAndTypesList());
+
+    NameSet left_columns_set;
+    for (const auto& col : left->getCurrentDataStream().header.getNames())
+    {
+        left_columns_set.emplace(col);
+    }
+    table_join->deduplicateAndQualifyColumnNames(left_columns_set, getUniqueName("right") + ".");
+    // fix right table key duplicate
+    NamesWithAliases right_table_alias;
+    for (size_t idx=0; idx < table_join->columnsFromJoinedTable().size() ; idx++)
+    {
+        auto origin_name = right->getCurrentDataStream().header.getByPosition(idx).name;
+        auto dedup_name = table_join->columnsFromJoinedTable().getNames().at(idx);
+        if (origin_name != dedup_name)
+        {
+            right_table_alias.emplace_back(NameWithAlias(origin_name, dedup_name));
+        }
+    }
+    if (!right_table_alias.empty())
+    {
+        ActionsDAGPtr project = std::make_shared<ActionsDAG>(right->getCurrentDataStream().header.getNamesAndTypesList());
+        project->addAliases(right_table_alias);
+        QueryPlanStepPtr project_step = std::make_unique<ExpressionStep>(right->getCurrentDataStream(), project);
+        right->addStep(std::move(project_step));
+    }
     // support multiple join key
     bool multiple_keys = join.expression().scalar_function().args(0).has_scalar_function();
     auto join_key_num = multiple_keys ? join.expression().scalar_function().args_size() : 1;
@@ -1148,14 +1174,6 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
         ASTPtr right_key = std::make_shared<ASTIdentifier>(right->getCurrentDataStream().header.getByPosition(right_key_idx).name);
         table_join->addOnKeys(left_key, right_key);
     }
-    table_join->setColumnsFromJoinedTable(right->getCurrentDataStream().header.getNamesAndTypesList());
-
-    NameSet left_columns_set;
-    for (const auto& col : left->getCurrentDataStream().header.getNames())
-    {
-        left_columns_set.emplace(col);
-    }
-    table_join->deduplicateAndQualifyColumnNames(left_columns_set, getUniqueName("right") + ".");
 
     for (const auto & column : table_join->columnsFromJoinedTable())
     {
