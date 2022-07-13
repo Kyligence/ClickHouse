@@ -1149,6 +1149,14 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
         table_join->addOnKeys(left_key, right_key);
     }
     table_join->setColumnsFromJoinedTable(right->getCurrentDataStream().header.getNamesAndTypesList());
+
+    NameSet left_columns_set;
+    for (const auto& col : left->getCurrentDataStream().header.getNames())
+    {
+        left_columns_set.emplace(col);
+    }
+    table_join->deduplicateAndQualifyColumnNames(left_columns_set, getUniqueName("right") + ".");
+
     for (const auto & column : table_join->columnsFromJoinedTable())
     {
         table_join->addJoinedColumn(column);
@@ -1175,7 +1183,7 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     Names after_join_names;
     auto left_names = left->getCurrentDataStream().header.getNames();
     after_join_names.insert(after_join_names.end(), left_names.begin(), left_names.end());
-    auto right_name = right->getCurrentDataStream().header.getNames();
+    auto right_name = table_join->columnsFromJoinedTable().getNames();
     after_join_names.insert(after_join_names.end(), right_name.begin(), right_name.end());
 
     if (join_opt_info.is_broadcast)
