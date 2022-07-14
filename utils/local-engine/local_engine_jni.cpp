@@ -106,8 +106,7 @@ void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNa
 {
     try
     {
-        static std::once_flag init_flag;
-        std::call_once(init_flag, [](){init();});
+        init();
     }
     catch (const DB::Exception & e)
     {
