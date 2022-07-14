@@ -26,7 +26,7 @@ void init()
     local_engine::SerializedPlanParser::shared_context = SharedContextHolder(Context::createShared());
     local_engine::SerializedPlanParser::global_context = Context::createGlobal(local_engine::SerializedPlanParser::shared_context.get());
     // disable global context initialized
-    local_engine::SerializedPlanParser::global_context->setBackgroundExecutorsInitialized(true);
+//    local_engine::SerializedPlanParser::global_context->setBackgroundExecutorsInitialized(true);
     local_engine::SerializedPlanParser::global_context->makeGlobalContext();
     local_engine::SerializedPlanParser::global_context->setSetting("join_use_nulls", true);
     local_engine::SerializedPlanParser::global_context->setConfig(local_engine::SerializedPlanParser::config);
