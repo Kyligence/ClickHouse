@@ -15,6 +15,7 @@
 #include <Poco/StringTokenizer.h>
 #include <Common/ExceptionUtils.h>
 #include <Common/JNIUtils.h>
+#include <Builder/BroadCastJoinBuilder.h>
 #include "jni_common.h"
 
 bool inside_main = true;
@@ -57,20 +58,22 @@ jint JNI_OnLoad(JavaVM * vm, void * reserved)
     split_result_constructor = GetMethodID(env, split_result_class, "<init>", "(JJJJJJ[J[J)V");
 
     local_engine::ShuffleReader::input_stream_class = CreateGlobalClassReference(env, "Ljava/io/InputStream;");
+    local_engine::NativeSplitter::iterator_class = CreateGlobalClassReference(env, "Lio/glutenproject/vectorized/IteratorWrapper;");
+    local_engine::WriteBufferFromJavaOutputStream::output_stream_class = CreateGlobalClassReference(env, "Ljava/io/OutputStream;");
+    local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class
+        = CreateGlobalClassReference(env, "Lio/glutenproject/execution/ColumnarNativeIterator;");
+
     local_engine::ShuffleReader::input_stream_read = env->GetMethodID(local_engine::ShuffleReader::input_stream_class, "read", "([B)I");
 
-    local_engine::NativeSplitter::iterator_class = CreateGlobalClassReference(env, "Lio/glutenproject/vectorized/IteratorWrapper;");
     local_engine::NativeSplitter::iterator_has_next = GetMethodID(env, local_engine::NativeSplitter::iterator_class, "hasNext", "()Z");
     local_engine::NativeSplitter::iterator_next = GetMethodID(env, local_engine::NativeSplitter::iterator_class, "next", "()J");
 
-    local_engine::WriteBufferFromJavaOutputStream::output_stream_class = CreateGlobalClassReference(env, "Ljava/io/OutputStream;");
     local_engine::WriteBufferFromJavaOutputStream::output_stream_write
         = GetMethodID(env, local_engine::WriteBufferFromJavaOutputStream::output_stream_class, "write", "([BII)V");
     local_engine::WriteBufferFromJavaOutputStream::output_stream_flush
         = GetMethodID(env, local_engine::WriteBufferFromJavaOutputStream::output_stream_class, "flush", "()V");
 
-    local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class
-        = CreateGlobalClassReference(env, "Lio/glutenproject/execution/ColumnarNativeIterator;");
+
     local_engine::SourceFromJavaIter::serialized_record_batch_iterator_hasNext
         = GetMethodID(env, local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class, "hasNext", "()Z");
     local_engine::SourceFromJavaIter::serialized_record_batch_iterator_next
@@ -99,6 +102,7 @@ void JNI_OnUnload(JavaVM * vm, void * reserved)
         local_engine::SerializedPlanParser::global_context.reset();
         local_engine::SerializedPlanParser::shared_context.reset();
     }
+    local_engine::BroadCastJoinBuilder::clean();
 }
 //static SharedContextHolder shared_context;
 
