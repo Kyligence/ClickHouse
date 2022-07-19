@@ -2,6 +2,7 @@
 
 #include <Processors/Formats/Impl/ArrowColumnToCHColumn.h>
 #include <arrow/record_batch.h>
+#include <Common/Stopwatch.h>
 #include <arrow/table.h>
 #include <boost/range/irange.hpp>
 
@@ -31,56 +32,35 @@ DB::Chunk ArrowParquetBlockInputFormat::generate()
     if (!file_reader)
     {
         prepareReader();
+        file_reader->set_batch_size(8192);
+//        file_reader->set_use_threads(true);
+        auto row_group_range = boost::irange(0, file_reader->num_row_groups());
+        auto row_group_indices = std::vector(row_group_range.begin(), row_group_range.end());
+        auto read_status = file_reader->GetRecordBatchReader(row_group_indices, &current_record_batch_reader);
+        if (!read_status.ok())
+            throw std::runtime_error{"Error while reading Parquet data: " + read_status.ToString()};
     }
 
     if (is_stopped)
         return {};
 
-    if (!current_row_group_table)
+
+    auto batch = current_record_batch_reader->Next();
+    if (*batch)
     {
-        arrow::Status read_status = file_reader->ReadRowGroup(row_group_current, column_indices, &current_row_group_table);
-        if (!read_status.ok())
-            throw std::runtime_error{"Error while reading Parquet data: " + read_status.ToString()};
-        if (format_settings.use_lowercase_column_name)
-            current_row_group_table = *current_row_group_table->RenameColumns(column_names);
-        prepareRecordBatchReader(*current_row_group_table);
-        ++row_group_current;
+        auto tmp_table = arrow::Table::FromRecordBatches({*batch});
+        Stopwatch watch;
+        watch.start();
+        arrow_column_to_ch_column->arrowTableToCHChunk(res, *tmp_table);
+        convert_time += watch.elapsedNanoseconds();
+    }
+    else
+    {
+        current_record_batch_reader.reset();
+        file_reader.reset();
+        return {};
     }
 
-
-    while (buffer.size() < prefer_block_size)
-    {
-        DB::Chunk chunk;
-        auto batch = current_record_batch_reader->Next();
-        if (!*batch)
-        {
-            // all row group end
-            if (row_group_current >= row_group_total)
-            {
-                break;
-            }
-            else
-            {
-                // init next row group table reader
-                arrow::Status read_status = file_reader->ReadRowGroup(row_group_current, column_indices, &current_row_group_table);
-                if (!read_status.ok())
-                    throw std::runtime_error{
-                        "Error while reading Parquet data: " + read_status.ToString()};
-                if (format_settings.use_lowercase_column_name)
-                    current_row_group_table = *current_row_group_table->RenameColumns(column_names);
-                prepareRecordBatchReader(*current_row_group_table);
-                ++row_group_current;
-            }
-        }
-        else
-        {
-            auto tmp_table = arrow::Table::FromRecordBatches({*batch});
-            arrow_column_to_ch_column->arrowTableToCHChunk(chunk, *tmp_table);
-            buffer.add(chunk, 0, chunk.getNumRows());
-        }
-    }
-
-    res = buffer.releaseColumns();
     /// If defaults_for_omitted_fields is true, calculate the default values from default expression for omitted fields.
     /// Otherwise fill the missing columns with zero values of its type.
     if (format_settings.defaults_for_omitted_fields)
@@ -88,6 +68,10 @@ DB::Chunk ArrowParquetBlockInputFormat::generate()
             for (const auto & column_idx : missing_columns)
                 block_missing_values.setBit(column_idx, row_idx);
     return res;
+}
+ArrowParquetBlockInputFormat::~ArrowParquetBlockInputFormat()
+{
+    std::cerr<<"convert time: " << convert_time / 1000000.0 <<" ms"<<std::endl;
 }
 
 }

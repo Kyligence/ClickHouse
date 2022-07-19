@@ -20,12 +20,16 @@ public:
 
 private:
     void prepareRecordBatchReader(const arrow::Table & table);
+
+public:
+    virtual ~ArrowParquetBlockInputFormat();
+
+private:
     DB::Chunk generate() override;
 
     size_t prefer_block_size;
+    int64_t convert_time=0;
     std::shared_ptr<arrow::RecordBatchReader> current_record_batch_reader;
-    std::shared_ptr<arrow::Table> current_row_group_table;
-    local_engine::ChunkBuffer buffer;
 
 };
 

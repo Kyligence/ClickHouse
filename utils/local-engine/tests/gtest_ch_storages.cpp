@@ -143,7 +143,11 @@ TEST(TestBatchParquetFileSource, local_file)
 {
     auto builder = std::make_unique<QueryPipelineBuilder>();
     auto files = std::make_shared<FilesInfo>();
-    files->files = {"file:///home/saber/Downloads/part-00000-f83d0a59-2bff-41bc-acde-911002bf1b33-c000.snappy.parquet"};
+    files->files = {
+        "file:///home/admin1/Documents/data/tpch/parquet/lineitem/part-00000-f83d0a59-2bff-41bc-acde-911002bf1b33-c000.snappy.parquet",
+        "file:///home/admin1/Documents/data/tpch/parquet/lineitem/part-00001-f83d0a59-2bff-41bc-acde-911002bf1b33-c000.snappy.parquet",
+        "file:///home/admin1/Documents/data/tpch/parquet/lineitem/part-00002-f83d0a59-2bff-41bc-acde-911002bf1b33-c000.snappy.parquet",
+    };
 
     const auto * type_string = "columns format version: 1\n"
                                "15 columns:\n"
@@ -187,9 +191,8 @@ TEST(TestBatchParquetFileSource, local_file)
         total_rows += result.rows();
         is_first = false;
     }
-
-    ASSERT_TRUE(total_rows > 0);
     std::cerr << "rows:" << total_rows << std::endl;
+    ASSERT_TRUE(total_rows == 59986052);
 }
 
 
