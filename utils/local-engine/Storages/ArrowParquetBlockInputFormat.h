@@ -17,12 +17,7 @@ class ArrowParquetBlockInputFormat : public DB::ParquetBlockInputFormat
 public:
     ArrowParquetBlockInputFormat(
         DB::ReadBuffer & in, const DB::Block & header, const DB::FormatSettings & formatSettings, size_t prefer_block_size_  = 8192);
-
-private:
-    void prepareRecordBatchReader(const arrow::Table & table);
-
-public:
-    virtual ~ArrowParquetBlockInputFormat();
+    virtual ~ArrowParquetBlockInputFormat() override;
 
 private:
     DB::Chunk generate() override;

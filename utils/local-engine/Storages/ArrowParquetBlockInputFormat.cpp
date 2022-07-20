@@ -17,15 +17,6 @@ ArrowParquetBlockInputFormat::ArrowParquetBlockInputFormat(
 {
 }
 
-void ArrowParquetBlockInputFormat::prepareRecordBatchReader(const arrow::Table & table)
-{
-    auto row_groups = boost::irange(0, file_reader->num_row_groups());
-    auto row_group_vector = std::vector<int>(row_groups.begin(), row_groups.end());
-    auto reader = std::make_shared<arrow::TableBatchReader>(table);
-    reader->set_chunksize(1024);
-    current_record_batch_reader = reader;
-}
-
 static size_t countIndicesForType(std::shared_ptr<arrow::DataType> type)
 {
     if (type->id() == arrow::Type::LIST)
