@@ -12,8 +12,8 @@ using namespace DB;
 namespace local_engine
 {
 ArrowParquetBlockInputFormat::ArrowParquetBlockInputFormat(
-    DB::ReadBuffer & in_, const DB::Block & header, const DB::FormatSettings & formatSettings, size_t prefer_block_size_)
-    : ParquetBlockInputFormat(in_, header, formatSettings), prefer_block_size(prefer_block_size_)
+    DB::ReadBuffer & in_, const DB::Block & header, const DB::FormatSettings & formatSettings)
+    : ParquetBlockInputFormat(in_, header, formatSettings)
 {
 }
 
@@ -88,10 +88,7 @@ DB::Chunk ArrowParquetBlockInputFormat::generate()
     if (*batch)
     {
         auto tmp_table = arrow::Table::FromRecordBatches({*batch});
-        Stopwatch watch;
-        watch.start();
         arrow_column_to_ch_column->arrowTableToCHChunk(res, *tmp_table);
-        convert_time += watch.elapsedNanoseconds();
     }
     else
     {
@@ -107,10 +104,6 @@ DB::Chunk ArrowParquetBlockInputFormat::generate()
             for (const auto & column_idx : missing_columns)
                 block_missing_values.setBit(column_idx, row_idx);
     return res;
-}
-ArrowParquetBlockInputFormat::~ArrowParquetBlockInputFormat()
-{
-    std::cerr<<"convert time: " << convert_time / 1000000.0 <<" ms"<<std::endl;
 }
 
 }

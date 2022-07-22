@@ -16,14 +16,11 @@ class ArrowParquetBlockInputFormat : public DB::ParquetBlockInputFormat
 {
 public:
     ArrowParquetBlockInputFormat(
-        DB::ReadBuffer & in, const DB::Block & header, const DB::FormatSettings & formatSettings, size_t prefer_block_size_  = 8192);
-    virtual ~ArrowParquetBlockInputFormat() override;
+        DB::ReadBuffer & in, const DB::Block & header, const DB::FormatSettings & formatSettings);
 
 private:
     DB::Chunk generate() override;
 
-    size_t prefer_block_size;
-    int64_t convert_time=0;
     std::shared_ptr<arrow::RecordBatchReader> current_record_batch_reader;
 
 };
