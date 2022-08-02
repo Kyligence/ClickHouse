@@ -317,43 +317,77 @@ Block SerializedPlanParser::parseNameStruct(const substrait::NamedStruct & struc
 }
 DataTypePtr SerializedPlanParser::parseType(const substrait::Type & type)
 {
+    DataTypePtr internal_type = nullptr;
     auto & factory = DataTypeFactory::instance();
     if (type.has_bool_() || type.has_i8())
     {
-        return factory.get("Int8");
+        internal_type = factory.get("Int8");
+        if (type.bool_().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE || type.i8().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else if (type.has_i16())
     {
-        return factory.get("Int16");
+        internal_type = factory.get("Int16");
+        if (type.i16().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else if (type.has_i32())
     {
-        return factory.get("Int32");
+        internal_type = factory.get("Int32");
+        if (type.i32().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else if (type.has_i64())
     {
-        return factory.get("Int64");
+        internal_type = factory.get("Int64");
+        if (type.i64().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else if (type.has_string())
     {
-        return factory.get("String");
+        internal_type = factory.get("String");
+        if (type.string().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else if (type.has_fp32())
     {
-        return factory.get("Float32");
+        internal_type = factory.get("Float32");
+        if (type.fp32().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else if (type.has_fp64())
     {
-        return factory.get("Float64");
+        internal_type = factory.get("Float64");
+        if (type.fp64().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else if (type.has_date())
     {
-        return factory.get("Date");
+        internal_type = factory.get("Date");
+        if (type.date().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+        {
+            internal_type = std::make_shared<DataTypeNullable>(internal_type);
+        }
     }
     else
     {
         throw Exception(ErrorCodes::UNKNOWN_TYPE, "doesn't support type {}", type.DebugString());
     }
+    return internal_type;
 }
 QueryPlanPtr SerializedPlanParser::parse(std::unique_ptr<substrait::Plan> plan)
 {
