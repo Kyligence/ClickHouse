@@ -37,6 +37,8 @@
 #include <Common/DebugUtils.h>
 #include <Common/JoinHelper.h>
 #include <Common/MergeTreeTool.h>
+#include <Common/StringUtils.h>
+#include <Operator/PartitionColumnFillingTransform.h>
 
 
 #include <base/logger_useful.h>
@@ -217,9 +219,28 @@ QueryPlanPtr SerializedPlanParser::parseReadRealWithLocalFile(const substrait::R
     {
         files_info->files.push_back(item.uri_file());
     }
+    auto header = parseNameStruct(rel.base_schema());
+    PartitionValues partition_values = StringUtils::parsePartitionTablePath(files_info->files[0]);
+    if (partition_values.size() > 1)
+    {
+        throw Exception(ErrorCodes::NOT_IMPLEMENTED, "doesn't support multiple level partition.");
+    }
+    ProcessorPtr partition_transform;
+    if (!partition_values.empty())
+    {
+        auto origin_header = header.cloneEmpty();
+        PartitionValue partition_value = partition_values[0];
+        header.erase(partition_value.first);
+        partition_transform = std::make_shared<PartitionColumnFillingTransform>(header, origin_header, partition_value.first, partition_value.second);
+    }
     auto query_plan = std::make_unique<QueryPlan>();
-    std::shared_ptr<IProcessor> source = std::make_shared<BatchParquetFileSource>(files_info, parseNameStruct(rel.base_schema()), context);
-    auto source_step = std::make_unique<ReadFromStorageStep>(Pipe(source), "Parquet");
+    std::shared_ptr<IProcessor> source = std::make_shared<BatchParquetFileSource>(files_info, header, context);
+    auto source_pipe = Pipe(source);
+    if (partition_transform)
+    {
+        source_pipe.addTransform(partition_transform);
+    }
+    auto source_step = std::make_unique<ReadFromStorageStep>(std::move(source_pipe), "Parquet");
     query_plan->addStep(std::move(source_step));
     return query_plan;
 }
@@ -315,73 +336,67 @@ Block SerializedPlanParser::parseNameStruct(const substrait::NamedStruct & struc
     }
     return Block(*std::move(internal_cols));
 }
+
+DataTypePtr inline wrapNullable(substrait::Type_Nullability nullable, DataTypePtr nested_type)
+{
+    if (nullable == substrait::Type_Nullability_NULLABILITY_NULLABLE)
+    {
+        return std::make_shared<DataTypeNullable>(nested_type);
+    }
+    else
+    {
+        return nested_type;
+    }
+}
+
 DataTypePtr SerializedPlanParser::parseType(const substrait::Type & type)
 {
     DataTypePtr internal_type = nullptr;
     auto & factory = DataTypeFactory::instance();
-    if (type.has_bool_() || type.has_i8())
+    if (type.has_bool_())
     {
         internal_type = factory.get("Int8");
-        if (type.bool_().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE || type.i8().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.i8().nullability(), internal_type);
+    }
+    else if (type.has_i8())
+    {
+        internal_type = factory.get("Int8");
+        internal_type = wrapNullable(type.i8().nullability(), internal_type);
     }
     else if (type.has_i16())
     {
         internal_type = factory.get("Int16");
-        if (type.i16().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.i16().nullability(), internal_type);
     }
     else if (type.has_i32())
     {
         internal_type = factory.get("Int32");
-        if (type.i32().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.i32().nullability(), internal_type);
     }
     else if (type.has_i64())
     {
         internal_type = factory.get("Int64");
-        if (type.i64().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.i64().nullability(), internal_type);
     }
     else if (type.has_string())
     {
         internal_type = factory.get("String");
-        if (type.string().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.string().nullability(), internal_type);
     }
     else if (type.has_fp32())
     {
         internal_type = factory.get("Float32");
-        if (type.fp32().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.fp32().nullability(), internal_type);
     }
     else if (type.has_fp64())
     {
         internal_type = factory.get("Float64");
-        if (type.fp64().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.fp64().nullability(), internal_type);
     }
     else if (type.has_date())
     {
         internal_type = factory.get("Date");
-        if (type.date().nullability() == substrait::Type_Nullability_NULLABILITY_NULLABLE)
-        {
-            internal_type = std::make_shared<DataTypeNullable>(internal_type);
-        }
+        internal_type = wrapNullable(type.date().nullability(), internal_type);
     }
     else
     {
