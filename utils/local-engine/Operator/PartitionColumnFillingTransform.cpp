@@ -1,7 +1,11 @@
 #include "PartitionColumnFillingTransform.h"
 #include <Columns/ColumnsNumber.h>
+#include <Columns/ColumnNullable.h>
+#include <DataTypes/DataTypesNumber.h>
 #include <IO/ReadBufferFromString.h>
 #include <IO/ReadHelpers.h>
+#include <Functions/FunctionHelpers.h>
+#include <Common/StringUtils.h>
 
 using namespace DB;
 
@@ -65,7 +69,16 @@ PartitionColumnFillingTransform::PartitionColumnFillingTransform(
 ColumnPtr PartitionColumnFillingTransform::createPartitionColumn()
 {
     ColumnPtr result;
-    WhichDataType which(partition_col_type);
+    DataTypePtr nested_type = partition_col_type;
+    if (const DataTypeNullable* nullable_type = checkAndGetDataType<DataTypeNullable>(partition_col_type.get()))
+    {
+        nested_type = nullable_type->getNestedType();
+        if (StringUtils::isNullPartitionValue(partition_col_value))
+        {
+            return nullable_type->createColumnConstWithDefaultValue(1);
+        }
+    }
+    WhichDataType which(nested_type);
     if (which.isInt8())
     {
         result = createIntPartitionColumn<Int8>(partition_col_type, partition_col_value);

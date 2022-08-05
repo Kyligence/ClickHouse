@@ -18,6 +18,10 @@ PartitionValues StringUtils::parsePartitionTablePath(std::string file)
     }
     return result;
 }
+bool StringUtils::isNullPartitionValue(std::string value)
+{
+    return value == "__HIVE_DEFAULT_PARTITION__";
+}
 }
 
 

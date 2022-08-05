@@ -11,6 +11,7 @@ class StringUtils
 {
 public:
     static PartitionValues parsePartitionTablePath(std::string file);
+    static bool isNullPartitionValue(std::string value);
 };
 }
 
