@@ -1122,6 +1122,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
             join(args, ',', args_name);
             auto result_name = "multiIf(" + args_name + ")";
             const auto * function_node = &action_dag->addFunction(function_multi_if, args, result_name);
+            action_dag->addOrReplaceInIndex(*function_node);
             return function_node;
         }
         case substrait::Expression::RexTypeCase::kScalarFunction: {
