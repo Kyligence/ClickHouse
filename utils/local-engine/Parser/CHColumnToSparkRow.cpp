@@ -19,7 +19,7 @@ namespace ErrorCodes
 }
 
 #define WRITE_VECTOR_COLUMN(TYPE, PRIME_TYPE, GETTER) \
-    const auto * type_col = checkAndGetColumn<ColumnVector<TYPE>>(*col.column); \
+    const auto * type_col = checkAndGetColumn<ColumnVector<TYPE>>(*nested_col); \
     for (auto i = 0; i < num_rows; i++) \
     { \
         bool is_null = nullable_column && nullable_column->isNullAt(i); \
@@ -158,7 +158,7 @@ void writeValue(
     }
     else if (which.isString())
     {
-        const auto * string_col = checkAndGetColumn<ColumnString>(*col.column);
+        const auto * string_col = checkAndGetColumn<ColumnString>(*nested_col);
         for (auto i = 0; i < num_rows; i++)
         {
             bool is_null = nullable_column && nullable_column->isNullAt(i);
