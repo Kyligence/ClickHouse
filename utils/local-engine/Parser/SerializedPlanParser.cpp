@@ -436,6 +436,21 @@ QueryPlanPtr SerializedPlanParser::parse(std::unique_ptr<substrait::Plan> plan)
         actions_dag->project(aliases);
         auto expression_step = std::make_unique<ExpressionStep>(query_plan->getCurrentDataStream(), actions_dag);
         query_plan->addStep(std::move(expression_step));
+
+        auto* logger = &Poco::Logger::get("SerializedPlanParser");
+        if (logger->is(Poco::Message::Priority::PRIO_TRACE))
+        {
+            WriteBufferFromOwnString plan_string;
+            QueryPlan::ExplainPlanOptions options;
+            options.header = true;
+            query_plan->explainPlan(plan_string, options);
+            LOG_TRACE(
+                &Poco::Logger::get("SerializedPlanParser"),
+                "pipeline {}\n,pipeline output:\n{}",
+                plan_string.str(),
+                query_plan->getCurrentDataStream().header.dumpStructure());
+        }
+
         return query_plan;
     }
     else
@@ -460,10 +475,21 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
             const auto & filter = rel.filter();
             query_plan = parseOp(filter.input());
             std::string filter_name;
-            auto actions_dag = parseFunction(query_plan->getCurrentDataStream(), filter.condition(), filter_name, nullptr, true);
+            std::vector<String> required_columns;
+            auto actions_dag = parseFunction(query_plan->getCurrentDataStream(), filter.condition(), filter_name, required_columns, nullptr, true);
             //            actions_dag->removeUnusedActions(query_plan->getCurrentDataStream().header.getNames());
             auto filter_step = std::make_unique<FilterStep>(query_plan->getCurrentDataStream(), actions_dag, filter_name, true);
             query_plan->addStep(std::move(filter_step));
+
+            // remove nullable
+            if (!required_columns.empty())
+            {
+                auto remove_nullable_actions_dag = std::make_shared<ActionsDAG>(blockToNameAndTypeList(query_plan->getCurrentDataStream().header));
+                removeNullable(required_columns, remove_nullable_actions_dag);
+                auto expression_step = std::make_unique<ExpressionStep>(query_plan->getCurrentDataStream(), remove_nullable_actions_dag);
+                expression_step->setStepDescription("Remove nullable properties");
+                query_plan->addStep(std::move(expression_step));
+            }
             break;
         }
         case substrait::Rel::RelTypeCase::kProject: {
@@ -482,7 +508,8 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
                 else if (expr.has_scalar_function())
                 {
                     std::string name;
-                    actions_dag = parseFunction(query_plan->getCurrentDataStream(), expr, name, actions_dag, true);
+                    std::vector<String> useless;
+                    actions_dag = parseFunction(query_plan->getCurrentDataStream(), expr, name, useless, actions_dag, true);
                     if (!name.empty())
                     {
                         required_columns.emplace_back(NameWithAlias(name, name));
@@ -598,6 +625,7 @@ QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const su
     auto input = plan.getCurrentDataStream();
     ActionsDAGPtr expression = std::make_shared<ActionsDAG>(blockToNameAndTypeList(input.header));
     std::vector<std::string> measure_names;
+    std::vector<String> required_columns;
     for (const auto & measure : rel.measures())
     {
         if (measure.measure().args_size() != 1)
@@ -609,7 +637,7 @@ QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const su
         if (arg.has_scalar_function())
         {
             std::string name;
-            parseFunction(input, arg, name, expression, true);
+            parseFunction(input, arg, name, required_columns, expression, true);
             measure_names.emplace_back(name);
         }
         else if (arg.has_selection())
@@ -811,7 +839,7 @@ std::string SerializedPlanParser::getFunctionName(std::string function_signature
 
 
 const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
-    const substrait::Expression & rel, string & result_name, DB::ActionsDAGPtr actions_dag, bool keep_result)
+    const substrait::Expression & rel, string & result_name, std::vector<String>& required_columns, DB::ActionsDAGPtr actions_dag, bool keep_result)
 {
     if (!rel.has_scalar_function())
     {
@@ -828,7 +856,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
         {
             std::string arg_name;
             bool keep_arg = FUNCTION_NEED_KEEP_ARGUMENTS.contains(function_name);
-            parseFunctionWithDAG(arg, arg_name, actions_dag, keep_arg);
+            parseFunctionWithDAG(arg, arg_name, required_columns, actions_dag, keep_arg);
             args.emplace_back(&actions_dag->getNodes().back());
         }
         else
@@ -844,6 +872,10 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
     }
     else
     {
+        if (function_name == "isNotNull")
+        {
+            required_columns.emplace_back(args[0]->result_name);
+        }
         if (function_signature.find("extract:", 0) != function_signature.npos)
         {
             // delete the first arg
@@ -873,13 +905,13 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
 }
 
 ActionsDAGPtr SerializedPlanParser::parseFunction(
-    const DataStream & input, const substrait::Expression & rel, std::string & result_name, ActionsDAGPtr actions_dag, bool keep_result)
+    const DataStream & input, const substrait::Expression & rel, std::string & result_name,  std::vector<String> &required_columns, ActionsDAGPtr actions_dag, bool keep_result)
 {
     if (!actions_dag)
     {
         actions_dag = std::make_shared<ActionsDAG>(blockToNameAndTypeList(input.header));
     }
-    parseFunctionWithDAG(rel, result_name, actions_dag, keep_result);
+    parseFunctionWithDAG(rel, result_name, required_columns, actions_dag, keep_result);
     return actions_dag;
 }
 
@@ -1077,7 +1109,8 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
             else if (cast_input.has_scalar_function())
             {
                 std::string result;
-                const auto * node = parseFunctionWithDAG(cast_input, result, action_dag, false);
+                std::vector<String> useless;
+                const auto * node = parseFunctionWithDAG(cast_input, result, useless, action_dag, false);
                 args.emplace_back(node);
             }
             else
@@ -1103,7 +1136,8 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
                 const auto & if_ = if_then.ifs(i);
                 std::string if_name;
                 std::string then_name;
-                parseFunctionWithDAG(if_.if_(), if_name, action_dag, false);
+                std::vector<String> useless;
+                parseFunctionWithDAG(if_.if_(), if_name, useless, action_dag, false);
                 for (const auto & node : action_dag->getNodes())
                 {
                     if (node.result_name == if_name)
@@ -1127,7 +1161,8 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
         }
         case substrait::Expression::RexTypeCase::kScalarFunction: {
             std::string result;
-            return parseFunctionWithDAG(rel, result, action_dag, false);
+            std::vector<String> useless;
+            return parseFunctionWithDAG(rel, result, useless, action_dag, false);
         }
         default: {
             throw Exception(
@@ -1291,7 +1326,8 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     if (join.has_post_join_filter())
     {
         std::string filter_name;
-        auto actions_dag = parseFunction(query_plan->getCurrentDataStream(), join.post_join_filter(), filter_name, nullptr, true);
+        std::vector<String> useless;
+        auto actions_dag = parseFunction(query_plan->getCurrentDataStream(), join.post_join_filter(), filter_name, useless, nullptr, true);
         auto filter_step = std::make_unique<FilterStep>(query_plan->getCurrentDataStream(), actions_dag, filter_name, true);
         query_plan->addStep(std::move(filter_step));
     }
@@ -1309,7 +1345,17 @@ void SerializedPlanParser::reorderJoinOutput(QueryPlan & plan, DB::Names cols)
     QueryPlanStepPtr project_step = std::make_unique<ExpressionStep>(plan.getCurrentDataStream(), project);
     plan.addStep(std::move(project_step));
 }
-
+void SerializedPlanParser::removeNullable(std::vector<String> require_columns, ActionsDAGPtr actionsDag)
+{
+    for (const auto & item : require_columns)
+    {
+        auto function_builder = FunctionFactory::instance().get("assumeNotNull", this->context);
+        ActionsDAG::NodeRawConstPtrs args;
+        args.emplace_back(&actionsDag->findInIndex(item));
+        const auto & node = actionsDag->addFunction(function_builder, args, item);
+        actionsDag->addOrReplaceInIndex(node);
+    }
+}
 
 SharedContextHolder SerializedPlanParser::shared_context;
 

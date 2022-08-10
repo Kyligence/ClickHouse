@@ -42,7 +42,7 @@ void NativeSplitter::split(DB::Block & block)
         {
             buffer->add(partitions[i], 0, first_cache_count);
         }
-        if (buffer->size() == options.buffer_size)
+        if (buffer->size() >= options.buffer_size)
         {
             output_buffer.emplace(std::pair(i, new Block(buffer->releaseColumns())));
         }
