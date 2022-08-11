@@ -332,7 +332,13 @@ Block SerializedPlanParser::parseNameStruct(const substrait::NamedStruct & struc
         const auto & name = struct_.names(i);
         const auto & type = struct_.struct_().types(i);
         auto data_type = parseType(type);
-        internal_cols->push_back(ColumnWithTypeAndName(data_type->createColumn(), data_type, name));
+        if (name.starts_with("sum#"))
+        {
+            AggregateFunctionProperties properties;
+            auto tmp = AggregateFunctionFactory::instance().get("sum", {DB::removeNullable(data_type)}, {}, properties);
+            data_type= tmp->getStateType();
+        }
+        internal_cols->push_back(ColumnWithTypeAndName(data_type, name));
     }
     return Block(*std::move(internal_cols));
 }
@@ -719,11 +725,19 @@ QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const su
         auto arg_type = plan.getCurrentDataStream().header.getByName(measure_names.at(i)).type;
         if (const auto * function_type = checkAndGetDataType<DataTypeAggregateFunction>(arg_type.get()))
         {
-            agg.function = getAggregateFunction(function_name, {function_type->getReturnType()});
+            agg.function = getAggregateFunction(function_name+"Merge", {arg_type});
         }
         else
         {
-            agg.function = getAggregateFunction(function_name, {arg_type});
+            auto arg = arg_type;
+            if (only_merge)
+            {
+                auto first = getAggregateFunction(function_name, {arg_type});
+                arg = first->getStateType();
+                function_name = function_name+"Merge";
+            }
+
+            agg.function = getAggregateFunction(function_name, {arg});
         }
         aggregates.push_back(agg);
     }
