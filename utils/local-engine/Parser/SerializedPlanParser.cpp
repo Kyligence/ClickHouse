@@ -135,27 +135,6 @@ bool isTypeSame(const substrait::Type & type, DataTypePtr data_type)
     return type_mapping.at(type_name) == data_type->getName();
 }
 
-DataTypePtr getCHType(const substrait::Type & type)
-{
-    static std::map<std::string, std::string> type_mapping
-        = {{"I8", "Int8"},
-           {"I16", "Int16"},
-           {"I32", "Int32"},
-           {"I64", "Int64"},
-           {"FP32", "Float32"},
-           {"FP64", "Float64"},
-           {"Date", "Date"},
-           {"String", "String"},
-           {"Boolean", "UInt8"}};
-    std::string type_name = typeName(type);
-    if (!type_mapping.contains(type_name))
-    {
-        throw Exception(ErrorCodes::UNKNOWN_TYPE, "unknown type {}", type_name);
-    }
-    return DataTypeFactory::instance().get(type_mapping.at(type_name));
-}
-
-
 std::string getCastFunction(const substrait::Type & type)
 {
     std::string ch_function_name;
@@ -242,6 +221,7 @@ QueryPlanPtr SerializedPlanParser::parseReadRealWithLocalFile(const substrait::R
         source_pipe.addTransform(partition_transform);
     }
     auto source_step = std::make_unique<ReadFromStorageStep>(std::move(source_pipe), "Parquet");
+    source_step->setStepDescription("Read Parquet");
     query_plan->addStep(std::move(source_step));
     return query_plan;
 }
@@ -257,6 +237,7 @@ QueryPlanPtr SerializedPlanParser::parseReadRealWithJavaIter(const substrait::Re
     auto plan = std::make_unique<QueryPlan>();
     auto source = std::make_shared<SourceFromJavaIter>(parseNameStruct(rel.base_schema()), input_iters[iter_index]);
     QueryPlanStepPtr source_step = std::make_unique<ReadFromPreparedSource>(Pipe(source), context);
+    source_step->setStepDescription("Read From Java Iter");
     plan->addStep(std::move(source_step));
     return plan;
 }
@@ -444,6 +425,7 @@ QueryPlanPtr SerializedPlanParser::parse(std::unique_ptr<substrait::Plan> plan)
         }
         actions_dag->project(aliases);
         auto expression_step = std::make_unique<ExpressionStep>(query_plan->getCurrentDataStream(), actions_dag);
+        expression_step->setStepDescription("Rename Output");
         query_plan->addStep(std::move(expression_step));
 
         auto* logger = &Poco::Logger::get("SerializedPlanParser");
@@ -538,6 +520,7 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
             }
             actions_dag->project(required_columns);
             auto expression_step = std::make_unique<ExpressionStep>(query_plan->getCurrentDataStream(), actions_dag);
+            expression_step->setStepDescription("Project");
             query_plan->addStep(std::move(expression_step));
             break;
         }
@@ -546,6 +529,7 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
             query_plan = parseOp(aggregate.input());
             bool is_final;
             auto aggregate_step = parseAggregate(*query_plan, aggregate, is_final);
+
             query_plan->addStep(std::move(aggregate_step));
 
             if (is_final)
@@ -565,7 +549,7 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
                 {
                     if (!isTypeSame(measure_types[i], source[measure_positions[i]].type))
                     {
-                        auto target_type = getCHType(measure_types[i]);
+                        auto target_type = parseType(measure_types[i]);
                         target[measure_positions[i]].type = target_type;
                         target[measure_positions[i]].column = target_type->createColumn();
                     }
@@ -574,6 +558,7 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
                 if (convert_action)
                 {
                     QueryPlanStepPtr convert_step = std::make_unique<ExpressionStep>(query_plan->getCurrentDataStream(), convert_action);
+                    convert_step->setStepDescription("Convert Aggregate Output");
                     query_plan->addStep(std::move(convert_step));
                 }
             }
@@ -666,6 +651,7 @@ QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const su
         }
     }
     auto expression_before_aggregate = std::make_unique<ExpressionStep>(input, expression);
+    expression_before_aggregate->setStepDescription("Before Aggregate");
     plan.addStep(std::move(expression_before_aggregate));
 
     std::set<substrait::AggregationPhase> phase_set;
@@ -741,6 +727,7 @@ QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const su
             }
 
             agg.function = getAggregateFunction(function_name, {arg});
+            std::cerr << function_name << " output: " << agg.function->getReturnType()->getName() << std::endl;
         }
         aggregates.push_back(agg);
     }
@@ -1261,6 +1248,7 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
         ActionsDAGPtr project = std::make_shared<ActionsDAG>(right->getCurrentDataStream().header.getNamesAndTypesList());
         project->addAliases(right_table_alias);
         QueryPlanStepPtr project_step = std::make_unique<ExpressionStep>(right->getCurrentDataStream(), project);
+        project_step->setStepDescription("Right Table Rename");
         right->addStep(std::move(project_step));
     }
     // support multiple join key
@@ -1346,6 +1334,7 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
         std::vector<String> useless;
         auto actions_dag = parseFunction(query_plan->getCurrentDataStream(), join.post_join_filter(), filter_name, useless, nullptr, true);
         auto filter_step = std::make_unique<FilterStep>(query_plan->getCurrentDataStream(), actions_dag, filter_name, true);
+        filter_step->setStepDescription("Post Join Filter");
         query_plan->addStep(std::move(filter_step));
     }
     return query_plan;
@@ -1360,6 +1349,7 @@ void SerializedPlanParser::reorderJoinOutput(QueryPlan & plan, DB::Names cols)
     }
     project->project(project_cols);
     QueryPlanStepPtr project_step = std::make_unique<ExpressionStep>(plan.getCurrentDataStream(), project);
+    project_step->setStepDescription("Reorder Join Output");
     plan.addStep(std::move(project_step));
 }
 void SerializedPlanParser::removeNullable(std::vector<String> require_columns, ActionsDAGPtr actionsDag)
