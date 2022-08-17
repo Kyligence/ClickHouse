@@ -489,12 +489,24 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
             const auto & expressions = project.expressions();
             auto actions_dag = std::make_shared<ActionsDAG>(blockToNameAndTypeList(query_plan->getCurrentDataStream().header));
             NamesWithAliases required_columns;
+            std::set<String> distinct_columns;
+
             for (const auto & expr : expressions)
             {
                 if (expr.has_selection())
                 {
                     const auto * field = actions_dag->getInputs()[expr.selection().direct_reference().struct_field().field()];
-                    required_columns.emplace_back(NameWithAlias(field->result_name, field->result_name));
+                    if (distinct_columns.contains(field->result_name))
+                    {
+                        auto unique_name = getUniqueName(field->result_name);
+                        required_columns.emplace_back(NameWithAlias(field->result_name, unique_name));
+                        distinct_columns.emplace(unique_name);
+                    }
+                    else
+                    {
+                        required_columns.emplace_back(NameWithAlias(field->result_name, field->result_name));
+                        distinct_columns.emplace(field->result_name);
+                    }
                 }
                 else if (expr.has_scalar_function())
                 {
@@ -503,14 +515,34 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
                     actions_dag = parseFunction(query_plan->getCurrentDataStream(), expr, name, useless, actions_dag, true);
                     if (!name.empty())
                     {
-                        required_columns.emplace_back(NameWithAlias(name, name));
+                        if (distinct_columns.contains(name))
+                        {
+                            auto unique_name = getUniqueName(name);
+                            required_columns.emplace_back(NameWithAlias(name, unique_name));
+                            distinct_columns.emplace(unique_name);
+                        }
+                        else
+                        {
+                            required_columns.emplace_back(NameWithAlias(name, name));
+                            distinct_columns.emplace(name);
+                        }
                     }
                 }
                 else if (expr.has_cast() || expr.has_if_then() || expr.has_literal())
                 {
                     const auto * node = parseArgument(actions_dag, expr);
                     actions_dag->addOrReplaceInIndex(*node);
-                    required_columns.emplace_back(NameWithAlias(node->result_name, node->result_name));
+                    if (distinct_columns.contains(node->result_name))
+                    {
+                        auto unique_name = getUniqueName(node->result_name);
+                        required_columns.emplace_back(NameWithAlias(node->result_name, unique_name));
+                        distinct_columns.emplace(unique_name);
+                    }
+                    else
+                    {
+                        required_columns.emplace_back(NameWithAlias(node->result_name, node->result_name));
+                        distinct_columns.emplace(node->result_name);
+                    }
                 }
                 else
                 {
@@ -727,7 +759,6 @@ QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const su
             }
 
             agg.function = getAggregateFunction(function_name, {arg});
-            std::cerr << function_name << " output: " << agg.function->getReturnType()->getName() << std::endl;
         }
         aggregates.push_back(agg);
     }
