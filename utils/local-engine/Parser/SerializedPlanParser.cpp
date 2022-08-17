@@ -39,6 +39,7 @@
 #include <Common/MergeTreeTool.h>
 #include <Common/StringUtils.h>
 #include <Operator/PartitionColumnFillingTransform.h>
+#include <Poco/StringTokenizer.h>
 
 
 #include <base/logger_useful.h>
@@ -332,10 +333,12 @@ Block SerializedPlanParser::parseNameStruct(const substrait::NamedStruct & struc
         const auto & name = struct_.names(i);
         const auto & type = struct_.struct_().types(i);
         auto data_type = parseType(type);
-        if (name.starts_with("sum#"))
+        Poco::StringTokenizer name_parts(name, "#");
+        if (name_parts.count() == 4)
         {
+            auto agg_function_name = name_parts[3];
             AggregateFunctionProperties properties;
-            auto tmp = AggregateFunctionFactory::instance().get("sum", {DB::removeNullable(data_type)}, {}, properties);
+            auto tmp = AggregateFunctionFactory::instance().get(name_parts[3], {data_type}, {}, properties);
             data_type= tmp->getStateType();
         }
         internal_cols->push_back(ColumnWithTypeAndName(data_type, name));
