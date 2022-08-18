@@ -437,7 +437,7 @@ QueryPlanPtr SerializedPlanParser::parse(std::unique_ptr<substrait::Plan> plan)
             query_plan->explainPlan(plan_string, options);
             LOG_TRACE(
                 &Poco::Logger::get("SerializedPlanParser"),
-                "pipeline {}\n,pipeline output:\n{}",
+                "pipeline \n{}\n,pipeline output:\n{}",
                 plan_string.str(),
                 query_plan->getCurrentDataStream().header.dumpStructure());
         }
@@ -631,11 +631,6 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
         default:
             throw Exception(ErrorCodes::UNKNOWN_TYPE, "doesn't support relation type");
     }
-    LOG_TRACE(
-        &Poco::Logger::get("SerializedPlanParser"),
-        "{} output:\n{}",
-        magic_enum::enum_name(rel.rel_type_case()),
-        query_plan->getCurrentDataStream().header.dumpStructure());
     return query_plan;
 }
 
@@ -1223,7 +1218,7 @@ QueryPlanPtr SerializedPlanParser::parse(std::string & plan)
 {
     auto plan_ptr = std::make_unique<substrait::Plan>();
     plan_ptr->ParseFromString(plan);
-    LOG_DEBUG(&Poco::Logger::get("SerializedPlanParser"), "parse plan {}", plan_ptr->DebugString());
+    LOG_DEBUG(&Poco::Logger::get("SerializedPlanParser"), "parse plan \n{}", plan_ptr->DebugString());
     return parse(std::move(plan_ptr));
 }
 void SerializedPlanParser::initFunctionEnv()
