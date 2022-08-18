@@ -106,6 +106,7 @@ private:
     const DB::ActionsDAG::Node * parseArgument(DB::ActionsDAGPtr action_dag, const substrait::Expression &rel);
     // remove nullable after isNotNull
     void removeNullable(std::vector<String> require_columns, ActionsDAGPtr actionsDag);
+    void wrapNullable(std::vector<String> columns, ActionsDAGPtr actionsDag);
     std::string getUniqueName(std::string name)
     {
         return name + "_" + std::to_string(name_no++);

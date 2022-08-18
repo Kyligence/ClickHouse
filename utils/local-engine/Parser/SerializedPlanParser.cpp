@@ -327,7 +327,7 @@ Block SerializedPlanParser::parseNameStruct(const substrait::NamedStruct & struc
     return Block(*std::move(internal_cols));
 }
 
-DataTypePtr inline wrapNullable(substrait::Type_Nullability nullable, DataTypePtr nested_type)
+DataTypePtr inline wrapNullableType(substrait::Type_Nullability nullable, DataTypePtr nested_type)
 {
     if (nullable == substrait::Type_Nullability_NULLABILITY_NULLABLE)
     {
@@ -346,47 +346,47 @@ DataTypePtr SerializedPlanParser::parseType(const substrait::Type & type)
     if (type.has_bool_())
     {
         internal_type = factory.get("Int8");
-        internal_type = wrapNullable(type.i8().nullability(), internal_type);
+        internal_type = wrapNullableType(type.i8().nullability(), internal_type);
     }
     else if (type.has_i8())
     {
         internal_type = factory.get("Int8");
-        internal_type = wrapNullable(type.i8().nullability(), internal_type);
+        internal_type = wrapNullableType(type.i8().nullability(), internal_type);
     }
     else if (type.has_i16())
     {
         internal_type = factory.get("Int16");
-        internal_type = wrapNullable(type.i16().nullability(), internal_type);
+        internal_type = wrapNullableType(type.i16().nullability(), internal_type);
     }
     else if (type.has_i32())
     {
         internal_type = factory.get("Int32");
-        internal_type = wrapNullable(type.i32().nullability(), internal_type);
+        internal_type = wrapNullableType(type.i32().nullability(), internal_type);
     }
     else if (type.has_i64())
     {
         internal_type = factory.get("Int64");
-        internal_type = wrapNullable(type.i64().nullability(), internal_type);
+        internal_type = wrapNullableType(type.i64().nullability(), internal_type);
     }
     else if (type.has_string())
     {
         internal_type = factory.get("String");
-        internal_type = wrapNullable(type.string().nullability(), internal_type);
+        internal_type = wrapNullableType(type.string().nullability(), internal_type);
     }
     else if (type.has_fp32())
     {
         internal_type = factory.get("Float32");
-        internal_type = wrapNullable(type.fp32().nullability(), internal_type);
+        internal_type = wrapNullableType(type.fp32().nullability(), internal_type);
     }
     else if (type.has_fp64())
     {
         internal_type = factory.get("Float64");
-        internal_type = wrapNullable(type.fp64().nullability(), internal_type);
+        internal_type = wrapNullableType(type.fp64().nullability(), internal_type);
     }
     else if (type.has_date())
     {
         internal_type = factory.get("Date");
-        internal_type = wrapNullable(type.date().nullability(), internal_type);
+        internal_type = wrapNullableType(type.date().nullability(), internal_type);
     }
     else
     {
@@ -648,44 +648,6 @@ AggregateFunctionPtr getAggregateFunction(const std::string & name, DataTypes ar
 
 QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const substrait::AggregateRel & rel, bool & is_final)
 {
-    auto input = plan.getCurrentDataStream();
-    ActionsDAGPtr expression = std::make_shared<ActionsDAG>(blockToNameAndTypeList(input.header));
-    std::vector<std::string> measure_names;
-    std::vector<String> required_columns;
-    for (const auto & measure : rel.measures())
-    {
-        if (measure.measure().args_size() != 1)
-        {
-            throw Exception(ErrorCodes::BAD_ARGUMENTS, "only support one argument aggregate function");
-        }
-        auto arg = measure.measure().args(0);
-
-        if (arg.has_scalar_function())
-        {
-            std::string name;
-            parseFunction(input, arg, name, required_columns, expression, true);
-            measure_names.emplace_back(name);
-        }
-        else if (arg.has_selection())
-        {
-            auto name = input.header.getByPosition(arg.selection().direct_reference().struct_field().field()).name;
-            measure_names.emplace_back(name);
-        }
-        else if (arg.has_literal())
-        {
-            const auto * node = parseArgument(expression, arg);
-            expression->addOrReplaceInIndex(*node);
-            measure_names.emplace_back(node->result_name);
-        }
-        else
-        {
-            throw Exception(ErrorCodes::UNKNOWN_TYPE, "unsupported aggregate argument type {}.", arg.DebugString());
-        }
-    }
-    auto expression_before_aggregate = std::make_unique<ExpressionStep>(input, expression);
-    expression_before_aggregate->setStepDescription("Before Aggregate");
-    plan.addStep(std::move(expression_before_aggregate));
-
     std::set<substrait::AggregationPhase> phase_set;
     for (int i = 0; i < rel.measures_size(); ++i)
     {
@@ -700,10 +662,60 @@ QueryPlanStepPtr SerializedPlanParser::parseAggregate(QueryPlan & plan, const su
     if (phase_set.contains(substrait::AggregationPhase::AGGREGATION_PHASE_INITIAL_TO_INTERMEDIATE)
         || phase_set.contains(substrait::AggregationPhase::AGGREGATION_PHASE_INTERMEDIATE_TO_INTERMEDIATE))
         final = false;
-
     bool only_merge = phase_set.contains(substrait::AggregationPhase::AGGREGATION_PHASE_INTERMEDIATE_TO_RESULT);
 
     is_final = final;
+
+    auto input = plan.getCurrentDataStream();
+    ActionsDAGPtr expression = std::make_shared<ActionsDAG>(blockToNameAndTypeList(input.header));
+    std::vector<std::string> measure_names;
+    std::vector<String> required_columns;
+    std::vector<std::string> nullable_measure_names;
+    String measure_name;
+    for (const auto & measure : rel.measures())
+    {
+        auto which_measure_type = WhichDataType(parseType(measure.measure().output_type()));
+        if (measure.measure().args_size() != 1)
+        {
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "only support one argument aggregate function");
+        }
+        auto arg = measure.measure().args(0);
+
+        if (arg.has_scalar_function())
+        {
+            parseFunction(input, arg, measure_name, required_columns, expression, true);
+            measure_names.emplace_back(measure_name);
+        }
+        else if (arg.has_selection())
+        {
+            measure_name= input.header.getByPosition(arg.selection().direct_reference().struct_field().field()).name;
+            measure_names.emplace_back(measure_name);
+        }
+        else if (arg.has_literal())
+        {
+            const auto * node = parseArgument(expression, arg);
+            expression->addOrReplaceInIndex(*node);
+            measure_name = node->result_name;
+            measure_names.emplace_back(measure_name);
+        }
+        else
+        {
+            throw Exception(ErrorCodes::UNKNOWN_TYPE, "unsupported aggregate argument type {}.", arg.DebugString());
+        }
+        if (which_measure_type.isNullable())
+        {
+            nullable_measure_names.emplace_back(measure_name);
+        }
+    }
+    if (!final)
+    {
+        wrapNullable(nullable_measure_names, expression);
+    }
+    auto expression_before_aggregate = std::make_unique<ExpressionStep>(input, expression);
+    expression_before_aggregate->setStepDescription("Before Aggregate");
+    plan.addStep(std::move(expression_before_aggregate));
+
+
     ColumnNumbers keys = {};
     if (rel.groupings_size() == 1)
     {
@@ -1388,6 +1400,18 @@ void SerializedPlanParser::removeNullable(std::vector<String> require_columns, A
     for (const auto & item : require_columns)
     {
         auto function_builder = FunctionFactory::instance().get("assumeNotNull", this->context);
+        ActionsDAG::NodeRawConstPtrs args;
+        args.emplace_back(&actionsDag->findInIndex(item));
+        const auto & node = actionsDag->addFunction(function_builder, args, item);
+        actionsDag->addOrReplaceInIndex(node);
+    }
+}
+
+void SerializedPlanParser::wrapNullable(std::vector<String> columns, ActionsDAGPtr actionsDag)
+{
+    for (const auto & item : columns)
+    {
+        auto function_builder = FunctionFactory::instance().get("toNullable", this->context);
         ActionsDAG::NodeRawConstPtrs args;
         args.emplace_back(&actionsDag->findInIndex(item));
         const auto & node = actionsDag->addFunction(function_builder, args, item);
