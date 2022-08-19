@@ -215,7 +215,9 @@ void ColumnsBuffer::add(DB::Block & block, int start, int end)
         accumulated_columns.reserve(block.columns());
         for (size_t i = 0; i < block.columns(); i++)
         {
-            accumulated_columns.emplace_back(block.getColumns()[i]->cloneEmpty());
+            auto column = block.getColumns()[i]->cloneEmpty();
+            column->reserve(9000);
+            accumulated_columns.emplace_back(std::move(column));
         }
     }
     assert(!accumulated_columns.empty());
