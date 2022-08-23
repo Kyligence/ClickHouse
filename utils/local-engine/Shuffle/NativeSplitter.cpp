@@ -99,7 +99,7 @@ bool NativeSplitter::hasNext()
     if (!output_buffer.empty())
     {
         next_partition_id = output_buffer.top().first;
-        cached_block = Block(*output_buffer.top().second);
+        setCurrentBlock(*output_buffer.top().second);
         produce();
     }
     return !output_buffer.empty();
@@ -110,7 +110,7 @@ DB::Block * NativeSplitter::next()
         output_buffer.pop();
     }
     consume();
-    return &cached_block;
+    return &currentBlock();
 }
 int32_t NativeSplitter::nextPartitionId()
 {

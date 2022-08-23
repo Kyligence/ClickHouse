@@ -26,5 +26,17 @@ void BlockIterator::consume()
 {
     consumed = true;
 }
+bool BlockIterator::isConsumed() const
+{
+    return consumed;
+}
+DB::Block & BlockIterator::currentBlock()
+{
+    return cached_block;
+}
+void BlockIterator::setCurrentBlock(DB::Block & block)
+{
+    cached_block = block;
+}
 }
 
