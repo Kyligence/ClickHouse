@@ -216,7 +216,7 @@ void ColumnsBuffer::add(DB::Block & block, int start, int end)
         for (size_t i = 0; i < block.columns(); i++)
         {
             auto column = block.getColumns()[i]->cloneEmpty();
-            column->reserve(9000);
+            column->reserve(prefer_buffer_size);
             accumulated_columns.emplace_back(std::move(column));
         }
     }
@@ -249,6 +249,9 @@ DB::Block ColumnsBuffer::releaseColumns()
 DB::Block ColumnsBuffer::getHeader()
 {
     return header;
+}
+ColumnsBuffer::ColumnsBuffer(size_t prefer_buffer_size_) : prefer_buffer_size(prefer_buffer_size_)
+{
 }
 
 void RoundRobinSplitter::computeAndCountPartitionId(DB::Block & block)
