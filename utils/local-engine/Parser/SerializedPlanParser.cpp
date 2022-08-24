@@ -1260,8 +1260,20 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     {
         throw Exception(ErrorCodes::UNKNOWN_TYPE, "unsupported join type {}.", magic_enum::enum_name(join.type()));
     }
-    table_join->addDisjunct();
 
+    if (join_opt_info.is_broadcast)
+    {
+        auto storage_join = BroadCastJoinBuilder::getJoin(join_opt_info.storage_join_key);
+        ActionsDAGPtr project = ActionsDAG::makeConvertingActions(right->getCurrentDataStream().header.getColumnsWithTypeAndName(), storage_join->getRightSampleBlock().getColumnsWithTypeAndName(), ActionsDAG::MatchColumnsMode::Position);
+        if (project)
+        {
+            QueryPlanStepPtr project_step = std::make_unique<ExpressionStep>(right->getCurrentDataStream(), project);
+            project_step->setStepDescription("Rename Broadcast Table Name");
+            right->addStep(std::move(project_step));
+        }
+    }
+
+    table_join->addDisjunct();
     table_join->setColumnsFromJoinedTable(right->getCurrentDataStream().header.getNamesAndTypesList());
 
     NameSet left_columns_set;
