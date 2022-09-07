@@ -6,7 +6,7 @@
 * Change implementation specific behavior on overflow of function `toDatetime`. It will be saturated to the nearest min/max supported instant of datetime instead of wraparound. This change is highlighted as "backward incompatible" because someone may unintentionally rely on the old behavior. [#32898](https://github.com/ClickHouse/ClickHouse/pull/32898) ([HaiBo Li](https://github.com/marising)).
 
 #### New Feature
-
+sdfsdfsdfsdf
 * Support for caching data locally for remote filesystems. It can be enabled for `s3` disks. Closes [#28961](https://github.com/ClickHouse/ClickHouse/issues/28961). [#33717](https://github.com/ClickHouse/ClickHouse/pull/33717) ([Kseniia Sumarokova](https://github.com/kssenii)). In the meantime, we enabled the test suite on s3 filesystem and no more known issues exist, so it is started to be production ready.
 * Add new table function `hive`. It can be used as follows `hive('<hive metastore url>', '<hive database>', '<hive table name>', '<columns definition>', '<partition columns>')` for example `SELECT * FROM hive('thrift://hivetest:9083', 'test', 'demo', 'id Nullable(String), score Nullable(Int32), day Nullable(String)', 'day')`. [#34946](https://github.com/ClickHouse/ClickHouse/pull/34946) ([lgbo](https://github.com/lgbo-ustc)).
 * Support authentication of users connected via SSL by their X.509 certificate. [#31484](https://github.com/ClickHouse/ClickHouse/pull/31484) ([eungenue](https://github.com/eungenue)).
