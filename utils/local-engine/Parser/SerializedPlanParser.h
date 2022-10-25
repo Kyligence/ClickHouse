@@ -58,6 +58,9 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"upper", "upper"},
     {"ltrim", "trimLeft"},
     {"rtrim", "trimRight"},
+    {"concat", "concat"},
+    {"strpos", "position"},
+    {"char_length", "char_length"},
 
     // in functions
     {"in", "in"},
