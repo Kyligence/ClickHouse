@@ -41,11 +41,16 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"cast", ""},
     {"alias", "alias"},
 
+    /// arithmetic functions
     {"subtract", "minus"},
     {"multiply", "multiply"},
     {"add", "plus"},
     {"divide", "divide"},
     {"modulus", "modulo"},
+    {"abs", "abs"},
+    {"ceil", "ceil"},
+    {"floor", "floor"},
+    {"exp", "exp"},
 
     /// string functions
     {"like", "like"},
@@ -62,6 +67,8 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"strpos", "position"},
     {"char_length", "char_length"},
     {"replace", "replaceAll"},
+    {"chr", "char"},
+    {"power", "power"},
 
     // in functions
     {"in", "in"},
