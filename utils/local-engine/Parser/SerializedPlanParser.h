@@ -104,6 +104,7 @@ public:
     DB::QueryPlanPtr parseReadRealWithLocalFile(const substrait::ReadRel & rel);
     DB::QueryPlanPtr parseReadRealWithJavaIter(const substrait::ReadRel & rel);
     DB::QueryPlanPtr parseMergeTreeTable(const substrait::ReadRel & rel);
+    PrewhereInfoPtr parsePreWhereInfo(const substrait::Expression & rel, Block & input);
 
     static bool isReadRelFromJava(const substrait::ReadRel & rel);
     static DB::Block parseNameStruct(const substrait::NamedStruct & struct_);
@@ -126,7 +127,7 @@ private:
     static void reorderJoinOutput(DB::QueryPlan & plan, DB::Names cols);
     static std::string getFunctionName(const std::string & function_sig, const substrait::Expression_ScalarFunction & function);
     DB::ActionsDAGPtr parseFunction(
-        const DataStream & input,
+        const Block & input,
         const substrait::Expression & rel,
         std::string & result_name,
         std::vector<String> & required_columns,
@@ -183,6 +184,7 @@ private:
     int name_no = 0;
     std::unordered_map<std::string, std::string> function_mapping;
     std::vector<jobject> input_iters;
+    const substrait::ProjectRel * last_project = nullptr;
     ContextPtr context;
 };
 
