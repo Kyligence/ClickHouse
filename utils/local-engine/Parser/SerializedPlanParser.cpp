@@ -257,7 +257,17 @@ PrewhereInfoPtr SerializedPlanParser::parsePreWhereInfo(const substrait::Express
     prewhere_info->prewhere_actions = std::make_shared<ActionsDAG>(input.getNamesAndTypesList());
     std::string filter_name;
     std::vector<String> required_columns;
-    parseFunctionWithDAG(rel, filter_name, required_columns, prewhere_info->prewhere_actions, true);
+    // for in function
+    if (rel.has_singular_or_list())
+    {
+        const auto *in_node = parseArgument(prewhere_info->prewhere_actions, rel);
+        prewhere_info->prewhere_actions->addOrReplaceInIndex(*in_node);
+        filter_name = in_node->result_name;
+    }
+    else
+    {
+        parseFunctionWithDAG(rel, filter_name, required_columns, prewhere_info->prewhere_actions, true);
+    }
     prewhere_info->prewhere_column_name = filter_name;
     prewhere_info->need_filter = true;
     prewhere_info->remove_prewhere_column = true;
@@ -937,7 +947,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
 {
     if (!rel.has_scalar_function())
     {
-        throw Exception(ErrorCodes::BAD_ARGUMENTS, "the root of expression should be a scalar function");
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "the root of expression should be a scalar function:\n {}", rel.DebugString());
     }
     const auto & scalar_function = rel.scalar_function();
 
