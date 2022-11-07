@@ -104,7 +104,7 @@ public:
     DB::QueryPlanPtr parseReadRealWithLocalFile(const substrait::ReadRel & rel);
     DB::QueryPlanPtr parseReadRealWithJavaIter(const substrait::ReadRel & rel);
     DB::QueryPlanPtr parseMergeTreeTable(const substrait::ReadRel & rel);
-    PrewhereInfoPtr parsePreWhereInfo(const substrait::Expression & rel, Block & input);
+    PrewhereInfoPtr parsePreWhereInfo(const substrait::Expression & rel, Block & input, std::vector<String>& not_nullable_columns);
 
     static bool isReadRelFromJava(const substrait::ReadRel & rel);
     static DB::Block parseNameStruct(const substrait::NamedStruct & struct_);
@@ -180,6 +180,8 @@ private:
 
     DB::QueryPlanPtr parseSort(const substrait::SortRel & sort_rel);
     DB::SortDescription parseSortDescription(const substrait::SortRel & sort_rel);
+
+    void addRemoveNullableStep(QueryPlan & plan, std::vector<String> columns);
 
     int name_no = 0;
     std::unordered_map<std::string, std::string> function_mapping;

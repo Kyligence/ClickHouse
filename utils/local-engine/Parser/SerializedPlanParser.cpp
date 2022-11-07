@@ -180,6 +180,17 @@ QueryPlanPtr SerializedPlanParser::parseReadRealWithJavaIter(const substrait::Re
     return plan;
 }
 
+void SerializedPlanParser::addRemoveNullableStep(QueryPlan & plan, std::vector<String> columns)
+{
+    if (columns.empty()) return;
+    auto remove_nullable_actions_dag
+        = std::make_shared<ActionsDAG>(blockToNameAndTypeList(plan.getCurrentDataStream().header));
+    removeNullable(columns, remove_nullable_actions_dag);
+    auto expression_step = std::make_unique<ExpressionStep>(plan.getCurrentDataStream(), remove_nullable_actions_dag);
+    expression_step->setStepDescription("Remove nullable properties");
+    plan.addStep(std::move(expression_step));
+}
+
 QueryPlanPtr SerializedPlanParser::parseMergeTreeTable(const substrait::ReadRel & rel)
 {
     assert(rel.has_extension_table());
@@ -228,9 +239,10 @@ QueryPlanPtr SerializedPlanParser::parseMergeTreeTable(const substrait::ReadRel 
     query_context.storage_snapshot = std::make_shared<StorageSnapshot>(*storage, metadata);
     query_context.custom_storage_merge_tree = storage;
     auto query_info = buildQueryInfo(names_and_types_list);
+    std::vector<String> not_null_columns;
     if (rel.has_filter())
     {
-        query_info->prewhere_info = parsePreWhereInfo(rel.filter(), header);
+        query_info->prewhere_info = parsePreWhereInfo(rel.filter(), header, not_null_columns);
     }
     auto data_parts = query_context.custom_storage_merge_tree->getDataPartsVector();
     int min_block = merge_tree_table.min_block;
@@ -248,15 +260,20 @@ QueryPlanPtr SerializedPlanParser::parseMergeTreeTable(const substrait::ReadRel 
     }
     auto query = query_context.custom_storage_merge_tree->reader.readFromParts(
         selected_parts, names_and_types_list.getNames(), query_context.storage_snapshot, *query_info, this->context, 4096 * 2, 1);
+    if (!not_null_columns.empty())
+    {
+        auto input_header = query->getCurrentDataStream().header;
+        std::erase_if(not_null_columns, [input_header](auto item) -> bool {return !input_header.has(item);});
+        addRemoveNullableStep(*query, not_null_columns);
+    }
     return query;
 }
 
-PrewhereInfoPtr SerializedPlanParser::parsePreWhereInfo(const substrait::Expression & rel, Block & input)
+PrewhereInfoPtr SerializedPlanParser::parsePreWhereInfo(const substrait::Expression & rel, Block & input, std::vector<String>& not_nullable_columns)
 {
     auto prewhere_info = std::make_shared<PrewhereInfo>();
     prewhere_info->prewhere_actions = std::make_shared<ActionsDAG>(input.getNamesAndTypesList());
     std::string filter_name;
-    std::vector<String> required_columns;
     // for in function
     if (rel.has_singular_or_list())
     {
@@ -266,7 +283,7 @@ PrewhereInfoPtr SerializedPlanParser::parsePreWhereInfo(const substrait::Express
     }
     else
     {
-        parseFunctionWithDAG(rel, filter_name, required_columns, prewhere_info->prewhere_actions, true);
+        parseFunctionWithDAG(rel, filter_name, not_nullable_columns, prewhere_info->prewhere_actions, true);
     }
     prewhere_info->prewhere_column_name = filter_name;
     prewhere_info->need_filter = true;
@@ -530,15 +547,7 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel)
             query_plan->addStep(std::move(filter_step));
 
             // remove nullable
-            if (!required_columns.empty())
-            {
-                auto remove_nullable_actions_dag
-                    = std::make_shared<ActionsDAG>(blockToNameAndTypeList(query_plan->getCurrentDataStream().header));
-                removeNullable(required_columns, remove_nullable_actions_dag);
-                auto expression_step = std::make_unique<ExpressionStep>(query_plan->getCurrentDataStream(), remove_nullable_actions_dag);
-                expression_step->setStepDescription("Remove nullable properties");
-                query_plan->addStep(std::move(expression_step));
-            }
+            addRemoveNullableStep(*query_plan, required_columns);
             break;
         }
         case substrait::Rel::RelTypeCase::kProject: {
