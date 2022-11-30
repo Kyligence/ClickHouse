@@ -1,16 +1,26 @@
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <Storages/SubstraitSource/ReadBufferBuilder.h>
+#include "Common/Exception.h"
 #include <Common/ErrorCodes.h>
+#include <Core/Defines.h>
 #include "IO/ReadSettings.h"
+#include "base/types.h"
 #include <IO/ReadBufferFromAzureBlobStorage.h>
 #include <Storages/SubstraitSource/SubstraitFileSource.h>
 #include <Storages/HDFS/ReadBufferFromHDFS.h>
+#include <Storages/Cache/ExternalDataSourceCache.h>
+#include <Storages/Cache/IRemoteFileMetadata.h>
+#include <Storages/Cache/RemoteFileMetadataFactory.h>
+#include <Storages/HDFS/HDFSCommon.h>
 #include <IO/ReadBufferFromFile.h>
 #include <Interpreters/Context_fwd.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <Poco/URI.h>
+#include <Poco/JSON/JSON.h>
+#include <Poco/JSON/Parser.h>
 #include <IO/S3Common.h>
 #include <IO/ReadBufferFromS3.h>
 #include <Disks/AzureBlobStorage/AzureBlobStorageAuth.h>
@@ -19,12 +29,15 @@
 
 #include <Poco/Logger.h>
 #include <base/logger_useful.h>
+#include <hdfs/hdfs.h>
+#include <filesystem>
 
 namespace DB
 {
 namespace ErrorCodes
 {
     extern const int BAD_ARGUMENTS;
+    extern const int LOGICAL_ERROR;
 }
 }
 
@@ -54,6 +67,79 @@ public:
     }
 };
 
+class HDFSFileMetadata : public DB::IRemoteFileMetadata
+{
+public:
+    HDFSFileMetadata() = default;
+
+    explicit HDFSFileMetadata(
+        const std::string & cluster_uri_, const std::string & remote_path_, size_t file_size_, UInt64 last_modification_timestamp_)
+    {
+        cluster = cluster_uri_;
+        remote_path = remote_path_;
+        file_size = file_size_;
+        last_modification_timestamp = last_modification_timestamp_;
+    }
+
+    static std::shared_ptr<HDFSFileMetadata>
+    create(DB::ContextPtr context, const std::string & cluster_uri_, const std::string & remote_path_)
+    {
+        auto hdfs_builder = DB::createHDFSBuilder(cluster_uri_, context->getConfigRef());
+        auto hdfs_fs = DB::createHDFSFS(hdfs_builder.get());
+        auto * hdfs_file_info = hdfsGetPathInfo(hdfs_fs.get(), remote_path_.c_str());
+        if (!hdfs_file_info)
+        {
+            throw DB::Exception(DB::ErrorCodes::LOGICAL_ERROR, "Get HDFS file info failed. {}/{}", cluster_uri_, remote_path_);
+        }
+        auto metadata = std::make_shared<HDFSFileMetadata>(cluster_uri_, remote_path_, hdfs_file_info->mSize, hdfs_file_info->mLastMod);
+        hdfsFreeFileInfo(hdfs_file_info, 1);
+        return metadata;
+    }
+
+    DB::String getName() const override
+    {
+        return "HDFS";
+    }
+
+    bool fromString(const String & buf) override
+    {
+        std::stringstream istream; // STYLE_CHECK_ALLOW_STD_STRING_STREAM
+        istream << buf;
+        Poco::JSON::Parser parser;
+        auto jobj = parser.parse(istream).extract<Poco::JSON::Object::Ptr>();
+        remote_path = jobj->get("remote_path").convert<String>();
+        cluster = jobj->get("cluster").convert<String>();
+        last_modification_timestamp = jobj->get("last_modification_timestamp").convert<UInt64>();
+        file_size = jobj->get("file_size").convert<UInt64>();
+        return true;
+
+    }
+
+    DB::String toString() const override
+    {
+        Poco::JSON::Object jobj;
+        jobj.set("cluster", cluster);
+        jobj.set("remote_path", remote_path);
+        jobj.set("last_modification_timestamp", last_modification_timestamp);
+        jobj.set("file_size", file_size);
+        std::stringstream buf; // STYLE_CHECK_ALLOW_STD_STRING_STREAM
+        jobj.stringify(buf);
+        return buf.str();
+    }
+
+    DB::String getVersion() const override
+    {
+        return std::to_string(last_modification_timestamp);
+    }
+private:
+    std::string cluster;
+};
+
+void registerHDFSMetadata(DB::RemoteFileMetadataFactory & factory)
+{
+    auto creator = []() -> DB::IRemoteFileMetadataPtr { return std::make_shared<HDFSFileMetadata>(); };
+    factory.registerRemoteFileMatadata("HDFS", creator);
+}
 class HDFSFileReadBufferBuilder : public ReadBufferBuilder
 {
 public:
@@ -69,11 +155,45 @@ public:
         {
             throw DB::Exception(DB::ErrorCodes::BAD_ARGUMENTS, "Not found hdfs.libhdfs3_conf");
         }
-        std::string uriPath = "hdfs://" + file_uri.getHost();
+        bool need_randome_acess = false;
+        if (file_info.has_parquet())
+        {
+            need_randome_acess = true;
+        }
+        std::string uri_path = "hdfs://" + file_uri.getHost();
         if (file_uri.getPort())
-            uriPath += ":" + std::to_string(file_uri.getPort());
-        read_buffer = std::make_unique<DB::ReadBufferFromHDFS>(
-            uriPath, file_uri.getPath(), context->getGlobalContext()->getConfigRef());
+            uri_path += ":" + std::to_string(file_uri.getPort());
+        if (DB::ExternalDataSourceCache::instance().isInitialized() && context->getSettingsRef().use_local_cache_for_remote_storage)
+        {
+            // FIXED ME!
+            // It seems there is a bug in the ReadBufferFromHDFS, we must specify the file size here,
+            // otherwise a coredump will happen when we reach the file's end and then try to call nextImpl()
+            // to check eof.
+            auto remote_file_metadata = HDFSFileMetadata::create(context, uri_path, file_uri.getPath());
+            read_buffer = std::make_unique<DB::ReadBufferFromHDFS>(
+                uri_path,
+                file_uri.getPath(),
+                context->getGlobalContext()->getConfigRef(),
+                DBMS_DEFAULT_BUFFER_SIZE,
+                remote_file_metadata->file_size);
+
+            size_t buffer_size = read_buffer->internalBuffer().size();
+            if (!buffer_size)
+                buffer_size = DBMS_DEFAULT_BUFFER_SIZE;
+
+
+            read_buffer = DB::RemoteReadBuffer::create(
+                context,
+                remote_file_metadata,
+                std::move(read_buffer),
+                buffer_size,
+                need_randome_acess);
+        }
+        else
+        {
+            read_buffer = std::make_unique<DB::ReadBufferFromHDFS>(uri_path, file_uri.getPath(), context->getConfigRef());
+        }
+
         return read_buffer;
     }
 };

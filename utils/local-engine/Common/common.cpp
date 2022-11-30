@@ -12,6 +12,9 @@
 #include <Poco/Util/MapConfiguration.h>
 #include <jni.h>
 #include <filesystem>
+#include <Storages/Cache/ExternalDataSourceCache.h>
+#include <Storages/Cache/RemoteFileMetadataFactory.h>
+#include <Storages/SubstraitSource/ReadBufferBuilder.h>
 
 namespace DB
 {
@@ -42,6 +45,29 @@ void registerAllFunctions()
 }
 constexpr auto CH_BACKEND_CONF_PREFIX = "spark.gluten.sql.columnar.backend.ch";
 constexpr auto CH_RUNTIME_CONF = "runtime_conf";
+constexpr auto CH_RUNTIME_SETTINGS = "local_engine.settings";
+
+constexpr auto LOCAL_FILE_CACHE_DIR = "local_cache_root";
+constexpr size_t LOCAL_FILE_CACHE_CAPACITY = 10l * (1<<30);
+
+static std::string global_local_cache_dir;
+
+std::string getLocalCacheDir()
+{
+    return global_local_cache_dir;
+}
+
+void setLocalCacheDir(const std::string & p)
+{
+    global_local_cache_dir = p;
+}
+
+void clearLocalCacheDir()
+{
+    auto local_cache_dir = getLocalCacheDir();
+    if (std::filesystem::exists(local_cache_dir))
+        std::filesystem::remove_all(local_cache_dir);
+}
 
 /// For using gluten, we recommend to pass clickhouse runtime configure by using --files in spark-submit.
 /// And set the parameter CH_BACKEND_CONF_PREFIX.CH_RUNTIME_CONF.conf_file
@@ -103,6 +129,23 @@ static std::map<std::string, std::string> getBackendConf(const std::string & pla
 
 void initCHRuntimeConfig(const std::map<std::string, std::string> & conf)
 {}
+
+void initLocalCacheForRemoteFiles(Poco::AutoPtr<Poco::Util::AbstractConfiguration> context_conf)
+{
+    std::string enable_path = std::string(CH_RUNTIME_SETTINGS) + ".use_local_cache_for_remote_storage";
+    if (!context_conf->has(enable_path) || (context_conf->getString(enable_path) != "true" && context_conf->getString(enable_path) != "1"))
+        return;
+    local_engine::registerHDFSMetadata(DB::RemoteFileMetadataFactory::instance());
+
+    // If run on yarn, different executors should have different working directory?
+    auto cache_dir = fs::current_path() / context_conf->getString("local_cache_for_remote_fs.root_dir", LOCAL_FILE_CACHE_DIR);
+    global_local_cache_dir = cache_dir.string();
+    UInt64 limit_size = context_conf->getUInt64("local_cache_for_remote_fs.limit_size", LOCAL_FILE_CACHE_CAPACITY);
+    UInt64 bytes_read_before_flush
+                = context_conf->getUInt64("local_cache_for_remote_fs.bytes_read_before_flush", DBMS_DEFAULT_BUFFER_SIZE);
+    DB::ExternalDataSourceCache::instance().initOnce(
+        local_engine::SerializedPlanParser::global_context, global_local_cache_dir, limit_size, bytes_read_before_flush);
+}
 
 void init(const std::string & plan)
 {
@@ -166,7 +209,7 @@ void init(const std::string & plan)
 
             /// Initialize settings
             auto settings = Settings();
-            std::string settings_path = "local_engine.settings";
+            std::string settings_path = CH_RUNTIME_SETTINGS;
             Poco::Util::AbstractConfiguration::Keys config_keys;
             config->keys(settings_path, config_keys);
             for (const std::string & key : config_keys)
@@ -192,6 +235,7 @@ void init(const std::string & plan)
             }
 
             registerAllFunctions();
+            initLocalCacheForRemoteFiles(config);
             LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Register all functions.");
 
 #if USE_EMBEDDED_COMPILER

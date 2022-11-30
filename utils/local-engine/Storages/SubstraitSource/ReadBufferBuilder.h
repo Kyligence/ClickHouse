@@ -6,6 +6,7 @@
 #include <Interpreters/Context.h>
 #include <Interpreters/Context_fwd.h>
 #include <boost/core/noncopyable.hpp>
+#include <Storages/Cache/RemoteFileMetadataFactory.h>
 namespace local_engine
 {
 class ReadBufferBuilder
@@ -35,4 +36,5 @@ private:
 };
 
 void registerReadBufferBuildes(ReadBufferBuilderFactory & factory);
+void registerHDFSMetadata(DB::RemoteFileMetadataFactory & factory);
 }

@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <numeric>
 #include <regex>
 #include <string>
@@ -24,6 +25,7 @@
 #include <jni/jni_error.h>
 #include <jni/ReservationListenerWrapper.h>
 #include <Storages/SubstraitSource/ReadBufferBuilder.h>
+#include <iostream>
 
 
 bool inside_main = true;
@@ -86,6 +88,7 @@ extern "C" {
 extern void registerAllFunctions();
 extern void init(const std::string &);
 extern char * createExecutor(const std::string &);
+extern std::string clearLocalCacheDir();
 
 namespace dbms
 {
@@ -175,6 +178,9 @@ void JNI_OnUnload(JavaVM * vm, void * /*reserved*/)
         local_engine::SerializedPlanParser::global_context.reset();
         local_engine::SerializedPlanParser::shared_context.reset();
     }
+
+    // try to clear the cached files
+    clearLocalCacheDir();
     local_engine::BroadCastJoinBuilder::clean();
 }
 
