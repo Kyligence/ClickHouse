@@ -182,6 +182,35 @@ std::shared_ptr<DB::ActionsDAG> SerializedPlanParser::expressionsToActionsDAG(
     return actions_dag;
 }
 
+std::string getDecimalFunction(const substrait::Type_Decimal & decimal, const bool nullOnOverflow) {
+    std::string ch_function_name;
+    UInt32 precision = decimal.precision();
+    UInt32 scale = decimal.scale();
+
+    if (precision <= DataTypeDecimal32::maxPrecision())
+    {
+        ch_function_name = "toDecimal32";
+    }
+    else if (precision <= DataTypeDecimal64::maxPrecision())
+    {
+        ch_function_name = "toDecimal64";
+    }
+    else if (precision <= DataTypeDecimal128::maxPrecision())
+    {
+        ch_function_name = "toDecimal128";
+    }
+    else
+    {
+        throw Exception(ErrorCodes::UNKNOWN_TYPE, "Spark doesn't support decimal type with precision {}", precision);
+    }
+
+    if (nullOnOverflow) {
+        ch_function_name = ch_function_name + "OrNull";
+    }
+
+    return ch_function_name;
+}
+
 /// TODO: This function needs to be improved for Decimal/Array/Map/Tuple types.
 std::string getCastFunction(const substrait::Type & type)
 {
@@ -226,6 +255,10 @@ std::string getCastFunction(const substrait::Type & type)
     else if (type.has_bool_())
     {
         ch_function_name = "toUInt8";
+    }
+    else if (type.has_decimal())
+    {
+        ch_function_name = getDecimalFunction(type.decimal(), false);
     }
     else
         throw Exception(ErrorCodes::UNKNOWN_TYPE, "doesn't support cast type {}", type.DebugString());
@@ -1025,6 +1058,10 @@ SerializedPlanParser::getFunctionName(const std::string & function_signature, co
         else
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "The first arg of extract function is wrong.");
     }
+    else if (function_name == "check_overflow")
+    {
+        ch_function_name = getDecimalFunction(output_type.decimal(), false);
+    }
     else
         ch_function_name = SCALAR_FUNCTIONS.at(function_name);
 
@@ -1100,6 +1137,15 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
         {
             auto cast_function = getCastFunction(rel.scalar_function().output_type());
             DB::ActionsDAG::NodeRawConstPtrs cast_args({function_node});
+
+            if (cast_function.starts_with("toDecimal"))
+            {
+                auto type = std::make_shared<DataTypeUInt32>();
+                UInt32 scale = rel.cast().type().decimal().scale();
+                cast_args.emplace_back(&actions_dag->addColumn(
+                    ColumnWithTypeAndName(type->createColumnConst(1, scale), type, getUniqueName(toString(scale)))));
+            }
+
             auto cast = FunctionFactory::instance().get(cast_function, context);
             std::string cast_args_name;
             join(cast_args, ',', cast_args_name);
@@ -1299,7 +1345,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
             std::string ch_function_name = getCastFunction(rel.cast().type());
             DB::ActionsDAG::NodeRawConstPtrs args;
             auto cast_input = rel.cast().input();
-            if (cast_input.has_selection())
+            if (cast_input.has_selection() || cast_input.has_literal())
             {
                 args.emplace_back(parseArgument(action_dag, rel.cast().input()));
             }
@@ -1318,6 +1364,13 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
             {
                 throw Exception(ErrorCodes::BAD_ARGUMENTS, "unsupported cast input {}", rel.cast().input().DebugString());
             }
+
+            if (ch_function_name.starts_with("toDecimal"))
+            {
+                UInt32 scale = rel.cast().type().decimal().scale();
+                args.emplace_back(add_column(std::make_shared<DataTypeUInt32>(), scale));
+            }
+
             const auto * function_node = toFunctionNode(action_dag, ch_function_name, args);
             action_dag->addOrReplaceInIndex(*function_node);
             return function_node;
