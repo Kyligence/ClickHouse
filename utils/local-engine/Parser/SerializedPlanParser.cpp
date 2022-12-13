@@ -182,7 +182,7 @@ std::shared_ptr<DB::ActionsDAG> SerializedPlanParser::expressionsToActionsDAG(
     return actions_dag;
 }
 
-std::string getDecimalFunction(const substrait::Type_Decimal & decimal, const bool nullOnOverflow) {
+std::string getDecimalFunction(const substrait::Type_Decimal & decimal, const bool null_on_overflow) {
     std::string ch_function_name;
     UInt32 precision = decimal.precision();
     UInt32 scale = decimal.scale();
@@ -204,7 +204,7 @@ std::string getDecimalFunction(const substrait::Type_Decimal & decimal, const bo
         throw Exception(ErrorCodes::UNKNOWN_TYPE, "Spark doesn't support decimal type with precision {}", precision);
     }
 
-    if (nullOnOverflow) {
+    if (null_on_overflow) {
         ch_function_name = ch_function_name + "OrNull";
     }
 
@@ -1060,7 +1060,9 @@ SerializedPlanParser::getFunctionName(const std::string & function_signature, co
     }
     else if (function_name == "check_overflow")
     {
-        ch_function_name = getDecimalFunction(output_type.decimal(), false);
+        if (args.size() != 2)
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "check_overflow function requires two args.");
+        ch_function_name = getDecimalFunction(output_type.decimal(), args.at(1).value().literal().boolean());
     }
     else
         ch_function_name = SCALAR_FUNCTIONS.at(function_name);
@@ -1127,6 +1129,33 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
             args.erase(args.begin());
         }
 
+        if (function_signature.find("check_overflow:", 0) != function_signature.npos)
+        {
+            if (scalar_function.arguments().size() != 2)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "check_overflow function requires two args.");
+
+            // if toDecimalxxOrNull, first arg need string type
+            if (scalar_function.arguments().at(1).value().literal().boolean())
+            {
+                std::string check_overflow_args_trans_function = "toString";
+                DB::ActionsDAG::NodeRawConstPtrs to_string_args({args[0]});
+
+                auto to_string_cast = FunctionFactory::instance().get(check_overflow_args_trans_function, context);
+                std::string to_string_cast_args_name;
+                join(to_string_args, ',', to_string_cast_args_name);
+                result_name = check_overflow_args_trans_function + "(" + to_string_cast_args_name + ")";
+                const auto * to_string_cast_node = &actions_dag->addFunction(to_string_cast, to_string_args, result_name);
+                args[0] = to_string_cast_node;
+            }
+
+            // delete the latest arg
+            args.pop_back();
+            auto type = std::make_shared<DataTypeUInt32>();
+            UInt32 scale = rel.scalar_function().output_type().decimal().scale();
+            args.emplace_back(
+                &actions_dag->addColumn(ColumnWithTypeAndName(type->createColumnConst(1, scale), type, getUniqueName(toString(scale)))));
+        }
+
         auto function_builder = FunctionFactory::instance().get(function_name, context);
         std::string args_name;
         join(args, ',', args_name);
@@ -1141,7 +1170,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
             if (cast_function.starts_with("toDecimal"))
             {
                 auto type = std::make_shared<DataTypeUInt32>();
-                UInt32 scale = rel.cast().type().decimal().scale();
+                UInt32 scale = rel.scalar_function().output_type().decimal().scale();
                 cast_args.emplace_back(&actions_dag->addColumn(
                     ColumnWithTypeAndName(type->createColumnConst(1, scale), type, getUniqueName(toString(scale)))));
             }
