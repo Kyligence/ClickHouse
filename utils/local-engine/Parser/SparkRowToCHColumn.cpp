@@ -47,9 +47,10 @@ ALWAYS_INLINE static void writeRowToColumns(std::vector<MutableColumnPtr> & colu
                 columns[i]->insertData(str_ref.data, str_ref.size);
             else
             {
-                String str(str_ref.data, str_ref.size);
-                auto * decimal128 = reinterpret_cast<Decimal128 *>(str.data());
-                BackingDataLengthCalculator::swapBytes(*decimal128);
+                char decimal128_fix_data[16] = {};
+                memcpy(decimal128_fix_data + 16 - str_ref.size, str_ref.data, str_ref.size);
+                String str(decimal128_fix_data, 16);
+                BackingDataLengthCalculator::swapDecimalEndianBytes(str); // Big-endian to Little-endian
                 columns[i]->insertData(str.data(), str.size());
             }
         }

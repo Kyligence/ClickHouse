@@ -97,9 +97,8 @@ public:
     /// Convert Field with type Decimal128 to/from buffer in Spark Row(big-endian)
     static void swapBytes(DB::Decimal128 & decimal128);
 
-    /// Get Decimal128 from substrait decimal literal bytes
-    /// Note: bytes is little-endian, but Int128 has big-endian array containing two little-endian uint64_t
-    static DB::Decimal128 getDecimal128FromBytes(const String & bytes);
+    /// Convert endian. Big to little or little to big.
+    static void swapDecimalEndianBytes(String & buf);
 
     static int64_t getOffsetAndSize(int64_t cursor, int64_t size);
     static int64_t extractOffset(int64_t offset_and_size);

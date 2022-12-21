@@ -1748,7 +1748,8 @@ std::pair<DataTypePtr, Field> SerializedPlanParser::parseLiteral(const substrait
             else if (precision <= DataTypeDecimal128::maxPrecision())
             {
                 type = std::make_shared<DataTypeDecimal128>(precision, scale);
-                auto value = BackingDataLengthCalculator::getDecimal128FromBytes(bytes);
+                String bytes_copy(bytes);
+                auto value = *reinterpret_cast<Decimal128 *>(bytes_copy.data());
                 field = DecimalField<Decimal128>(value, scale);
             }
             else
