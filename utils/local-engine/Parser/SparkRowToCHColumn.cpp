@@ -170,7 +170,7 @@ Field VariableLengthDataReader::readArray(const char * buffer, [[maybe_unused]] 
     const auto len_null_bitmap = calculateBitSetWidthInBytes(num_elems);
 
     /// Read values
-    const auto * array_type = typeid_cast<const DataTypeArray *>(type.get());
+    const auto * array_type = typeid_cast<const DataTypeArray *>(removeNullable(type).get());
     const auto & nested_type = array_type->getNestedType();
     const auto elem_size = BackingDataLengthCalculator::getArrayElementSize(nested_type);
     const auto len_values = roundNumberOfBytesToNearestWord(elem_size * num_elems);
@@ -230,7 +230,7 @@ Field VariableLengthDataReader::readMap(const char * buffer, size_t length) cons
         return std::move(Map());
 
     /// Read UnsafeArrayData of keys
-    const auto * map_type = typeid_cast<const DataTypeMap *>(type.get());
+    const auto * map_type = typeid_cast<const DataTypeMap *>(removeNullable(type).get());
     const auto & key_type = map_type->getKeyType();
     const auto key_array_type = std::make_shared<DataTypeArray>(key_type);
     VariableLengthDataReader key_reader(key_array_type);
@@ -262,7 +262,7 @@ Field VariableLengthDataReader::readMap(const char * buffer, size_t length) cons
 Field VariableLengthDataReader::readStruct(const char * buffer, size_t  /*length*/) const
 {
     /// 内存布局：null_bitmap(字节数与字段数成正比) | values(num_fields * 8B) | backing data
-    const auto * tuple_type = typeid_cast<const DataTypeTuple *>(type.get());
+    const auto * tuple_type = typeid_cast<const DataTypeTuple *>(removeNullable(type).get());
     const auto & field_types = tuple_type->getElements();
     const auto num_fields = field_types.size();
     if (num_fields == 0)
