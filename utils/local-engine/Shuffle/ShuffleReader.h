@@ -29,12 +29,12 @@ private:
 class ReadBufferFromJavaInputStream : public DB::BufferWithOwnMemory<DB::ReadBuffer>
 {
 public:
-    explicit ReadBufferFromJavaInputStream(jobject input_stream);
+    explicit ReadBufferFromJavaInputStream(jobject input_stream, size_t customize_buffer_size);
     ~ReadBufferFromJavaInputStream() override;
 
 private:
     jobject java_in;
-    jbyteArray buf = nullptr;
+    size_t buffer_size;
     int readFromJava();
     bool nextImpl() override;
 

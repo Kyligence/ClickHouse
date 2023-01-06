@@ -60,7 +60,7 @@ void ShuffleSplitter::splitBlockByPartition(DB::Block & block)
     {
         split_result.raw_partition_length[i] += partitions[i].bytes();
         ColumnsBuffer & buffer = partition_buffer[i];
-        size_t first_cache_count = std::min(partitions[i].rows(), options.buffer_size - buffer.size());
+        size_t first_cache_count = std::min(partitions[i].rows(), options.split_size - buffer.size());
         if (first_cache_count < partitions[i].rows())
         {
             buffer.add(partitions[i], 0, first_cache_count);
@@ -71,7 +71,7 @@ void ShuffleSplitter::splitBlockByPartition(DB::Block & block)
         {
             buffer.add(partitions[i], 0, first_cache_count);
         }
-        if (buffer.size() == options.buffer_size)
+        if (buffer.size() == options.split_size)
         {
             spillPartition(i);
         }
@@ -79,7 +79,7 @@ void ShuffleSplitter::splitBlockByPartition(DB::Block & block)
 }
 void ShuffleSplitter::init()
 {
-    partition_ids.reserve(options.buffer_size);
+    partition_ids.reserve(options.split_size);
     partition_buffer.reserve(options.partition_nums);
     partition_outputs.reserve(options.partition_nums);
     partition_write_buffers.reserve(options.partition_nums);
@@ -127,12 +127,12 @@ void ShuffleSplitter::mergePartitionFiles()
 {
     DB::WriteBufferFromFile data_write_buffer = DB::WriteBufferFromFile(options.data_file);
     std::string buffer;
-    int buffer_size = 1024 * 1024;
+    int buffer_size = options.io_buffer_size;
     buffer.reserve(buffer_size);
     for (size_t i = 0; i < options.partition_nums; ++i)
     {
         auto file = getPartitionTempFile(i);
-        DB::ReadBufferFromFile reader = DB::ReadBufferFromFile(file);
+        DB::ReadBufferFromFile reader = DB::ReadBufferFromFile(file, options.io_buffer_size);
         while (reader.next())
         {
             auto bytes = reader.readBig(buffer.data(), buffer_size);
@@ -188,7 +188,7 @@ std::unique_ptr<DB::WriteBuffer> ShuffleSplitter::getPartitionWriteBuffer(size_t
     auto file = getPartitionTempFile(partition_id);
     if (partition_cached_write_buffers[partition_id] == nullptr)
         partition_cached_write_buffers[partition_id]
-            = std::make_unique<DB::WriteBufferFromFile>(file, DBMS_DEFAULT_BUFFER_SIZE, O_CREAT | O_WRONLY | O_APPEND);
+            = std::make_unique<DB::WriteBufferFromFile>(file, options.io_buffer_size, O_CREAT | O_WRONLY | O_APPEND);
     if (!options.compress_method.empty()
         && std::find(compress_methods.begin(), compress_methods.end(), options.compress_method) != compress_methods.end())
     {
@@ -206,7 +206,7 @@ const std::vector<std::string> ShuffleSplitter::compress_methods = {"", "ZSTD", 
 void ShuffleSplitter::writeIndexFile()
 {
     auto index_file = options.data_file + ".index";
-    auto writer = std::make_unique<DB::WriteBufferFromFile>(index_file, DBMS_DEFAULT_BUFFER_SIZE, O_CREAT | O_WRONLY | O_TRUNC);
+    auto writer = std::make_unique<DB::WriteBufferFromFile>(index_file, options.io_buffer_size, O_CREAT | O_WRONLY | O_TRUNC);
     for (auto len : split_result.partition_length)
     {
         DB::writeIntText(len, *writer);

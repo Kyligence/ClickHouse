@@ -51,31 +51,17 @@ bool ReadBufferFromJavaInputStream::nextImpl()
 int ReadBufferFromJavaInputStream::readFromJava()
 {
     GET_JNIENV(env)
-    if (buf == nullptr)
-    {
-        jbyteArray local_buf = env->NewByteArray(4096);
-        buf = static_cast<jbyteArray>(env->NewGlobalRef(local_buf));
-        env->DeleteLocalRef(local_buf);
-    }
-    jint count = safeCallIntMethod(env, java_in, ShuffleReader::input_stream_read, buf);
-    if (count > 0)
-    {
-        env->GetByteArrayRegion(buf, 0, count, reinterpret_cast<jbyte *>(internal_buffer.begin()));
-    }
+    jint count = safeCallIntMethod(env, java_in, ShuffleReader::input_stream_read, reinterpret_cast<jlong>(working_buffer.begin()), buffer_size);
     CLEAN_JNIENV
     return count;
 }
-ReadBufferFromJavaInputStream::ReadBufferFromJavaInputStream(jobject input_stream) : java_in(input_stream)
+ReadBufferFromJavaInputStream::ReadBufferFromJavaInputStream(jobject input_stream, size_t customize_buffer_size) : java_in(input_stream), buffer_size(customize_buffer_size)
 {
 }
 ReadBufferFromJavaInputStream::~ReadBufferFromJavaInputStream()
 {
     GET_JNIENV(env)
     env->DeleteGlobalRef(java_in);
-    if (buf != nullptr)
-    {
-        env->DeleteGlobalRef(buf);
-    }
     CLEAN_JNIENV
 
 }

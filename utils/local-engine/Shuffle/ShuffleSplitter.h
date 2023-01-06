@@ -14,7 +14,8 @@ namespace local_engine
 {
 struct SplitOptions
 {
-    size_t buffer_size = DEFAULT_BLOCK_SIZE;
+    size_t split_size = DEFAULT_BLOCK_SIZE;
+    size_t io_buffer_size = DBMS_DEFAULT_BUFFER_SIZE;
     std::string data_file;
     std::string local_tmp_dir;
     int map_id;

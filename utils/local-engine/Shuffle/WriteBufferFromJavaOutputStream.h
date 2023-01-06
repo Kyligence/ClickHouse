@@ -12,7 +12,7 @@ public:
     static jmethodID output_stream_write;
     static jmethodID output_stream_flush;
 
-    WriteBufferFromJavaOutputStream(jobject output_stream, jbyteArray buffer);
+    WriteBufferFromJavaOutputStream(jobject output_stream, jbyteArray buffer, size_t customize_buffer_size);
     ~WriteBufferFromJavaOutputStream() override;
 
 private:

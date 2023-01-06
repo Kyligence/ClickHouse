@@ -24,6 +24,7 @@ struct StorageJoinContext
 {
     std::string key;
     jobject input;
+    size_t io_buffer_size;
     DB::Names key_names;
     DB::ASTTableJoin::Kind kind;
     DB::ASTTableJoin::Strictness strictness;
@@ -33,6 +34,7 @@ struct StorageJoinContext
 void BroadCastJoinBuilder::buildJoinIfNotExist(
     const std::string & key,
     jobject input,
+    size_t io_buffer_size,
     const DB::Names & key_names_,
     DB::ASTTableJoin::Kind kind_,
     DB::ASTTableJoin::Strictness strictness_,
@@ -45,7 +47,7 @@ void BroadCastJoinBuilder::buildJoinIfNotExist(
         {
             StorageJoinContext context
             {
-                key, input, key_names_, kind_, strictness_, columns_
+                key, input, io_buffer_size, key_names_, kind_, strictness_, columns_
             };
             // use another thread, exclude broadcast memory allocation from current memory tracker
             auto func = [context]() -> void
@@ -58,7 +60,7 @@ void BroadCastJoinBuilder::buildJoinIfNotExist(
                     storage_join_map.erase(tmp);
                 }
                 auto storage_join = std::make_shared<StorageJoinFromReadBuffer>(
-                    std::make_unique<ReadBufferFromJavaInputStream>(context.input),
+                    std::make_unique<ReadBufferFromJavaInputStream>(context.input, context.io_buffer_size),
                     StorageID("default", context.key),
                     context.key_names,
                     true,
@@ -91,6 +93,7 @@ std::shared_ptr<StorageJoinFromReadBuffer> BroadCastJoinBuilder::getJoin(const s
  void BroadCastJoinBuilder::buildJoinIfNotExist(
     const std::string & key,
     jobject input,
+    size_t io_buffer_size,
     const std::string & join_keys,
     const std::string & join_type,
     const std::string & named_struct)
@@ -133,7 +136,7 @@ std::shared_ptr<StorageJoinFromReadBuffer> BroadCastJoinBuilder::getJoin(const s
 
     Block header = SerializedPlanParser::parseNameStruct(*substrait_struct);
     ColumnsDescription columns_description(header.getNamesAndTypesList());
-    buildJoinIfNotExist(key, input, key_names, kind, strictness, columns_description);
+    buildJoinIfNotExist(key, input, io_buffer_size, key_names, kind, strictness, columns_description);
 }
 void BroadCastJoinBuilder::clean()
 {

@@ -260,7 +260,8 @@ DB::ContextMutablePtr global_context;
         int sum = 0;
         auto root = "/tmp/test_shuffle/" + local_engine::ShuffleSplitter::compress_methods[state.range(1)];
         local_engine::SplitOptions options{
-            .buffer_size = 8192,
+            .split_size = 8192,
+            .io_buffer_size = DBMS_DEFAULT_BUFFER_SIZE,
             .data_file = root + "/data.dat",
             .local_tmp_dir = root,
             .map_id = 1,
@@ -345,7 +346,8 @@ DB::ContextMutablePtr global_context;
         int sum = 0;
         auto root = "/tmp/test_shuffle/" + local_engine::ShuffleSplitter::compress_methods[state.range(1)];
         local_engine::SplitOptions options{
-            .buffer_size = 8192,
+            .split_size = 8192,
+            .io_buffer_size = DBMS_DEFAULT_BUFFER_SIZE,
             .data_file = root + "/data.dat",
             .local_tmp_dir = root,
             .map_id = 1,
