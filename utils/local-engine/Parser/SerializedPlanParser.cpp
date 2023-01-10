@@ -1535,15 +1535,16 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
         }
 
         case substrait::Expression::RexTypeCase::kSingularOrList: {
-            DB::ActionsDAG::NodeRawConstPtrs args;
-            args.emplace_back(parseArgument(action_dag, rel.singular_or_list().value()));
-
-            /// options should be non-empty and literals
             const auto & options = rel.singular_or_list().options();
+            /// options is empty always return false
             if (options.empty())
-                throw Exception(ErrorCodes::LOGICAL_ERROR, "Empty SingularOrList not supported");
+                return add_column(std::make_shared<DataTypeUInt8>(), 0);
+            /// options should be literals
             if (!options[0].has_literal())
                 throw Exception(ErrorCodes::LOGICAL_ERROR, "Options of SingularOrList must have literal type");
+
+            DB::ActionsDAG::NodeRawConstPtrs args;
+            args.emplace_back(parseArgument(action_dag, rel.singular_or_list().value()));
 
             DataTypePtr elem_type;
             std::tie(elem_type, std::ignore) = parseLiteral(options[0].literal());
