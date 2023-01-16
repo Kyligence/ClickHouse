@@ -482,7 +482,7 @@ DataTypePtr wrapNullableType(substrait::Type_Nullability nullable, DataTypePtr n
 
 DataTypePtr wrapNullableType(bool nullable, DataTypePtr nested_type)
 {
-    if (nullable)
+    if (nullable && !nested_type->isNullable())
         return std::make_shared<DataTypeNullable>(nested_type);
     else
         return nested_type;
@@ -1546,24 +1546,33 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
             DB::ActionsDAG::NodeRawConstPtrs args;
             args.emplace_back(parseArgument(action_dag, rel.singular_or_list().value()));
 
+            bool nullable = false;
+            size_t options_len = options.size();
+            for (size_t i = 0; i < options_len; ++i)
+            {
+                if (!options[i].has_literal())
+                    throw Exception(ErrorCodes::BAD_ARGUMENTS, "in expression values must be the literal!");
+                if (!nullable)
+                    nullable = options[i].literal().has_null();
+            }
+
             DataTypePtr elem_type;
             std::tie(elem_type, std::ignore) = parseLiteral(options[0].literal());
+            elem_type = wrapNullableType(nullable, elem_type);
 
             size_t options_len = options.size();
             MutableColumnPtr elem_column = elem_type->createColumn();
             elem_column->reserve(options_len);
             for (size_t i = 0; i < options_len; ++i)
             {
-                if (!options[i].has_literal())
-                    throw Exception(ErrorCodes::BAD_ARGUMENTS, "in expression values must be the literal!");
-
                 auto type_and_field = std::move(parseLiteral(options[i].literal()));
+                auto option_type = wrapNullableType(nullable, type_and_field.first);
                 if (!elem_type->equals(*type_and_field.first))
                     throw Exception(
                         ErrorCodes::LOGICAL_ERROR,
                         "SingularOrList options type mismatch:{} and {}",
                         elem_type->getName(),
-                        type_and_field.first->getName());
+                        option_type->getName());
 
                 elem_column->insert(type_and_field.second);
             }
@@ -1587,6 +1596,18 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
 
             const auto * function_node = toFunctionNode(action_dag, "in", args);
             action_dag->addOrReplaceInIndex(*function_node);
+            if (nullable)
+            {
+                /// if sets has `null` and value not in sets
+                /// In Spark: return `null`, is the standard behaviour from ANSI.(SPARK-37920)
+                /// In CH: return `false`
+                /// So we used if(a, b, c) cast `false` to `null` if sets has `null`
+                auto type = wrapNullableType(true, function_node->result_type);
+                DB::ActionsDAG::NodeRawConstPtrs cast_args({function_node, add_column(type, true), add_column(type, Field())});
+                auto cast = FunctionFactory::instance().get("if", context);
+                function_node = toFunctionNode(action_dag, "if", cast_args);
+            }
+
             return function_node;
         }
 
