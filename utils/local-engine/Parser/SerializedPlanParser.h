@@ -121,6 +121,8 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"ascii", "ascii"},
     {"split", "splitByRegexp"},
     {"concat_ws", "concat_ws"},
+    {"base64", "base64Encode"},
+    {"unbase64","base64Decode"},
 
     // in functions
     {"in", "in"},
