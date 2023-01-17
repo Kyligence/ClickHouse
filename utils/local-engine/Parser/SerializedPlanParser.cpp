@@ -1560,7 +1560,6 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
             std::tie(elem_type, std::ignore) = parseLiteral(options[0].literal());
             elem_type = wrapNullableType(nullable, elem_type);
 
-            size_t options_len = options.size();
             MutableColumnPtr elem_column = elem_type->createColumn();
             elem_column->reserve(options_len);
             for (size_t i = 0; i < options_len; ++i)
