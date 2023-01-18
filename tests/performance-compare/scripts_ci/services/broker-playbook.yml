@@ -1,0 +1,43 @@
+---
+- hosts: workers
+  vars:
+    starrocks_home: "{{ install_dir }}/StarRocks-{{ starrock_version }}"
+    broker_home: "{{ starrocks_home }}/apache_hdfs_broker"
+    meta_home: "{{ broker_home }}/meta"
+  tasks:
+    - name: print starrocks home
+      debug:
+        msg: "{{ starrocks_home }}"
+    - name: print broker home
+      debug:
+        msg: "{{ broker_home }}"
+    - name: create install dirs
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+    - name: check starrocks home directory is exist
+      stat:
+        path: "{{ starrocks_home }}"
+      register: dir_is_exist
+    - name: print starrocks home directory stat
+      debug:
+        msg: "{{ dir_is_exist }}"
+    - name: stop old broker if starrocks home exist
+      shell: "{{ broker_home }}/bin/stop_broker.sh --daemon"
+      when: dir_is_exist.stat.exists == True
+      ignore_errors: yes
+    - name: unzip starrocks tar.gz if starrocks home not exist
+      unarchive:
+        src: "{{ starrocks_home }}.tar.gz"
+        dest: "{{ install_dir }}"
+      when: dir_is_exist.stat.exists == False
+    - name: config broker java home
+      shell: "sed '/JAVA_HOME/d' {{ broker_home }}/conf/apache_hdfs_broker.conf | echo JAVA_HOME={{ JAVA_HOME }} | tee -a {{ broker_home }}/conf/apache_hdfs_broker.conf"
+    - name: start broker
+      shell: "export JAVA_HOME={{ JAVA_HOME }};{{ broker_home }}/bin/start_broker.sh --daemon"
+    - name: check broker health
+      wait_for:
+        host: localhost
+        port: 8000
+        delay: 10
+        timeout: 180
