@@ -1566,7 +1566,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
             {
                 auto type_and_field = std::move(parseLiteral(options[i].literal()));
                 auto option_type = wrapNullableType(nullable, type_and_field.first);
-                if (!elem_type->equals(*type_and_field.first))
+                if (!elem_type->equals(*option_type))
                     throw Exception(
                         ErrorCodes::LOGICAL_ERROR,
                         "SingularOrList options type mismatch:{} and {}",
