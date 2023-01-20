@@ -27,9 +27,19 @@ login_token=$(echo ${raw_token_sub1%%;*})
 
 cd ${result_dir}
 
-chbackend_commit_ids="chbackend:"$(cat chbackend_commit_ids)
-gluten_commit_ids="gluten:"$(cat gluten_commit_ids)
-commit_ids=${chbackend_commit_ids}"\n    "${gluten_commit_ids}
+chbackend_cids="chbackend:"
+cat chbackend_commit_ids | while read line
+do
+  chbackend_cids=${chbackend_cids}${line}","
+done
+
+gluten_cids="gluten:"
+cat gluten_commit_ids | while read line
+do
+  gluten_cids=${gluten_cids}${line}","
+done
+
+commit_ids=${chbackend_cids}"        "${gluten_cids}
 
 run_id=$(date +%Y-%m-%d)
 year=$(date +%Y)
