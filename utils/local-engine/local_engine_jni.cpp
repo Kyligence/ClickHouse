@@ -597,6 +597,7 @@ jlong Java_io_glutenproject_vectorized_CHShuffleSplitterJniWrapper_nativeMake(
     jstring short_name,
     jint num_partitions,
     jbyteArray expr_list,
+    jbyteArray expr_index_list,
     jlong map_id,
     jint split_size,
     jstring codec,
@@ -606,6 +607,7 @@ jlong Java_io_glutenproject_vectorized_CHShuffleSplitterJniWrapper_nativeMake(
     LOCAL_ENGINE_JNI_METHOD_START
     std::vector<std::string> expr_vec;
     std::string exprs;
+    std::string exprs_index;
     if (expr_list != nullptr)
     {
         int len = env->GetArrayLength(expr_list);
@@ -615,6 +617,17 @@ jlong Java_io_glutenproject_vectorized_CHShuffleSplitterJniWrapper_nativeMake(
         exprs = std::string(str, str + len);
         delete[] str;
     }
+
+    if (expr_index_list != nullptr)
+    {
+        int len = env->GetArrayLength(expr_index_list);
+        auto * str = reinterpret_cast<jbyte *>(new char[len]);
+        memset(str, 0, len);
+        env->GetByteArrayRegion(expr_index_list, 0, len, str);
+        exprs_index = std::string(str, str + len);
+        delete[] str;
+    }
+
     local_engine::SplitOptions options{
         .split_size = static_cast<size_t>(split_size),
         .io_buffer_size = DBMS_DEFAULT_BUFFER_SIZE,
@@ -623,6 +636,7 @@ jlong Java_io_glutenproject_vectorized_CHShuffleSplitterJniWrapper_nativeMake(
         .map_id = static_cast<int>(map_id),
         .partition_nums = static_cast<size_t>(num_partitions),
         .exprs = exprs,
+        .exprs_index = exprs_index,
         .compress_method = jstring2string(env, codec)};
     local_engine::SplitterHolder * splitter
         = new local_engine::SplitterHolder{.splitter = local_engine::ShuffleSplitter::create(jstring2string(env, short_name), options)};

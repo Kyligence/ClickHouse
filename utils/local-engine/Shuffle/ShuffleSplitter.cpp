@@ -286,7 +286,17 @@ HashSplitter::HashSplitter(SplitOptions options_) : ShuffleSplitter(std::move(op
     std::vector<std::string> hash_fields;
     hash_fields.insert(hash_fields.end(), exprs_list.begin(), exprs_list.end());
 
-    selector_builder = std::make_unique<HashSelectorBuilder>(options.partition_nums, hash_fields, "murmurHash3_32");
+    std::vector<std::size_t> hash_fields_index;
+    if (!options_.exprs_index.empty())
+    {
+        Poco::StringTokenizer exprs_list_index(options_.exprs_index, ",");
+        for (const auto & expr_index : exprs_list_index)
+        {
+            hash_fields_index.insert(hash_fields_index.end(), static_cast<size_t>(stoi(expr_index)));
+        }
+    }
+
+    selector_builder = std::make_unique<HashSelectorBuilder>(options.partition_nums, hash_fields, hash_fields_index, "murmurHash3_32");
 }
 std::unique_ptr<ShuffleSplitter> HashSplitter::create(SplitOptions && options_)
 {

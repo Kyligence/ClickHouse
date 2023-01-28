@@ -170,7 +170,7 @@ HashNativeSplitter::HashNativeSplitter(NativeSplitter::Options options_, jobject
     std::vector<std::string> hash_fields;
     hash_fields.insert(hash_fields.end(), exprs_list.begin(), exprs_list.end());
 
-    selector_builder = std::make_unique<HashSelectorBuilder>(options.partition_nums, hash_fields, "murmurHash3_32");
+    selector_builder = std::make_unique<HashSelectorBuilder>(options.partition_nums, hash_fields, std::vector<std::size_t>(), "murmurHash3_32");
 }
 
 void HashNativeSplitter::computePartitionId(Block & block)

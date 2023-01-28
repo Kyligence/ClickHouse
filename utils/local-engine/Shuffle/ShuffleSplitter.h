@@ -21,6 +21,7 @@ struct SplitOptions
     int map_id;
     size_t partition_nums;
     std::string exprs;
+    std::string exprs_index;
     // std::vector<std::string> exprs;
     std::string compress_method = "zstd";
     int compress_level;
