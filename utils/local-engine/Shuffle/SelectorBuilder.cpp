@@ -45,7 +45,7 @@ HashSelectorBuilder::HashSelectorBuilder(
 std::vector<DB::IColumn::ColumnIndex> HashSelectorBuilder::build(DB::Block & block)
 {
     ColumnsWithTypeAndName args;
-    for (int i = 0; i < exprs.size(); i++)
+    for (size_t i = 0; i < exprs.size(); i++)
     {
         auto & name = exprs.at(i);
         auto * type_and_name = block.findByName(name);
