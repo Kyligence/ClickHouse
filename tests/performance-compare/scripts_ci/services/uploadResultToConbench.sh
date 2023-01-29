@@ -51,6 +51,7 @@ batch_id=""
 trigger_method=$(cat /tmp/trigger)
 if [ "${trigger_method}" == "event" ];then
   batch_id=${run_id}_b_event_triggered_$(date "+%H:%M:%S")
+  commit_ids="PR        "${commit_ids}
 elif [ "${trigger_method}" == "timer" ];then
   batch_id=${run_id}_b1
 fi
