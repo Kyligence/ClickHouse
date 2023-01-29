@@ -240,7 +240,7 @@ std::vector<MergeTreeUtil::Path> MergeTreeUtil::getAllMergeTreeParts(const Path 
     for (const auto & entry : fs::directory_iterator(storage_path))
     {
         auto filename = entry.path().filename();
-        if (filename == "format_version.txt" || filename == "detached" || filename == "_metadata_log")
+        if (filename == "format_version.txt" || filename == "detached" || filename == "_delta_log")
             continue;
         res.push_back(entry.path());
     }
