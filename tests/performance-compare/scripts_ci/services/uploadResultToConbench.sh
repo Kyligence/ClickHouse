@@ -9,6 +9,8 @@ if [ -z "${result_dir}" ];then
   exit 160
 fi
 
+
+
 raw_token=$(curl -i -X 'POST' \
   'http://ec2-161-189-50-52.cn-northwest-1.compute.amazonaws.com.cn:5000/api/login/' \
   -H 'accept: */*' \
@@ -25,7 +27,7 @@ raw_token_sub1=$(echo ${raw_token#*: })
 login_token=$(echo ${raw_token_sub1%%;*})
 
 
-cd ${result_dir}
+cd "${result_dir}"|| exit 160
 
 chbackend_cids="chbackend:"
 cat chbackend_commit_ids | while read line
@@ -41,7 +43,18 @@ done
 
 commit_ids=${chbackend_cids}"        "${gluten_cids}
 
+
 run_id=$(date +%Y-%m-%d)
+
+batch_id=""
+# change detail batchid
+trigger_method=$(cat /tmp/trigger)
+if [ "${trigger_method}" == "event" ];then
+  batch_id=${run_id}_b_event_triggered_$(date "+%H:%M:%S")
+elif [ "${trigger_method}" == "timer" ];then
+  batch_id=${run_id}_b1
+fi
+
 year=$(date +%Y)
 run_trend_id=${year}
 timestamp=$(date "+%Y-%m-%d %H:%M:%S")
@@ -82,7 +95,7 @@ do
     -H 'Content-Type: application/json' \
     -H "Cookie: ${login_token}" \
       -d "{
-      \"batch_id\": \"${run_id}_b1\",
+      \"batch_id\": \"${batch_id}\",
       \"cluster_info\": {
         \"info\": {},
         \"name\": \"\",
@@ -120,7 +133,7 @@ do
         ],
         \"unit\": \"ms\"
       },
-      \"tags\": {\"name\":\"${run_id}_b1\", \"display\":\"${query}\"},
+      \"tags\": {\"name\":\"${batch_id}\", \"display\":\"${query}\"},
       \"timestamp\": \"${timestamp}\",
       \"validation\": {}
     }"
@@ -228,7 +241,3 @@ curl -X 'POST' \
             \"timestamp\": \"${timestamp}\",
             \"validation\": {}
           }"
-
-
-
-
