@@ -10,7 +10,6 @@
 #include <arrow/io/api.h>
 #include <arrow/status.h>
 #include "Storages/ch_parquet/arrow/reader.h"
-#include <parquet/file_reader.h>
 #include <Processors/Formats/Impl/ArrowBufferedStreams.h>
 #include "OptimizedArrowColumnToCHColumn.h"
 #include <DataTypes/NestedUtils.h>

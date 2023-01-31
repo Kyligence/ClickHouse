@@ -79,11 +79,11 @@ std::vector<RowGroupInfomation> ParquetFormatFile::collectRequiredRowGroups()
 
 std::vector<RowGroupInfomation> ParquetFormatFile::collectRequiredRowGroups(DB::ReadBuffer * read_buffer)
 {
-    std::unique_ptr<parquet::arrow::FileReader> reader;
+    std::unique_ptr<ch_parquet::arrow::FileReader> reader;
     DB::FormatSettings format_settings;
     format_settings.seekable_read = true;
     std::atomic<int> is_stopped{0};
-    auto status = parquet::arrow::OpenFile(
+    auto status = ch_parquet::arrow::OpenFile(
         asArrowFile(*read_buffer, format_settings, is_stopped), arrow::default_memory_pool(), &reader);
     if (!status.ok())
     {

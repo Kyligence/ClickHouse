@@ -1,9 +1,10 @@
 #pragma once
 #include <memory>
 #include <Storages/SubstraitSource/FormatFile.h>
-#include <parquet/arrow/reader.h>
 #include <IO/ReadBuffer.h>
 #include <base/types.h>
+#include "Storages/ch_parquet/arrow/reader.h"
+
 namespace local_engine
 {
 struct RowGroupInfomation

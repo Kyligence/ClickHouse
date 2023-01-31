@@ -477,7 +477,7 @@ Block SerializedPlanParser::parseNameStruct(const substrait::NamedStruct & struc
 
 DataTypePtr wrapNullableType(substrait::Type_Nullability nullable, DataTypePtr nested_type)
 {
-    return wrapNullableType(nullable == substrait::Type_Nullability_NULLABILITY_NULLABLE, nested_type);
+    return nested_type;
 }
 
 DataTypePtr wrapNullableType(bool nullable, DataTypePtr nested_type)
@@ -939,7 +939,7 @@ void SerializedPlanParser::addPreProjectStepIfNeeded(
             need_pre_project = true;
         }
     }
-    wrapNullable(to_wrap_nullable, expression, nullable_measure_names);
+//    wrapNullable(to_wrap_nullable, expression, nullable_measure_names);
 
     if (need_pre_project)
     {

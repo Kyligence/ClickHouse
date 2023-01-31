@@ -113,6 +113,13 @@ struct ReadBufferFromHDFS::ReadBufferFromHDFSImpl : public BufferWithOwnMemory<S
 
         offset = offset_;
         int seek_status = hdfsSeek(fs.get(), fin, offset);
+
+        /**
+         * This will fix an assert failure when using debug profile,
+         * but it will slow down read performance a little, leave it now
+         */
+
+        // resetWorkingBuffer();
         if (seek_status != 0)
             throw Exception(ErrorCodes::CANNOT_SEEK_THROUGH_FILE, "Fail to seek HDFS file: {}, error: {}", hdfs_uri, std::string(hdfsGetLastError()));
         return offset;

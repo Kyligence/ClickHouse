@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <cstring>
 #include <unordered_set>
-#include <utility>
 #include <vector>
 
 #include "arrow/array.h"
@@ -41,7 +40,6 @@
 #include "Storages/ch_parquet/arrow/reader_internal.h"
 #include "Storages/ch_parquet/arrow/column_reader.h"
 #include "parquet/exception.h"
-#include "parquet/file_reader.h"
 #include "parquet/metadata.h"
 #include "parquet/properties.h"
 #include "parquet/schema.h"
@@ -68,7 +66,7 @@ using arrow::internal::checked_cast;
 using arrow::internal::Iota;
 
 // Help reduce verbosity
-using ParquetReader = ch_parquet::ParquetFileReader;
+using ParquetReader = parquet::ParquetFileReader;
 
 using ch_parquet::internal::RecordReader;
 
@@ -152,7 +150,16 @@ class FileReaderImpl : public FileReader {
                  ArrowReaderProperties properties)
       : pool_(pool),
         reader_(std::move(reader)),
-        reader_properties_(std::move(properties)) {}
+        reader_properties_(std::move(properties)) {
+
+      // override the default ArrowReaderProperties to make it enable async read
+      reader_properties_.set_pre_buffer(true);
+
+      threadpool_ = ::arrow::internal::ThreadPool::Make(1).ValueOrDie();
+      threadpool_->SetCapacity(1);
+      reader_properties_.set_io_context(::arrow::io::IOContext(::arrow::default_memory_pool(),
+                                                       threadpool_.get(), ::arrow::StopToken::Unstoppable(),-1));
+  }
 
   Status Init() {
     return SchemaManifest::Make(reader_->metadata()->schema(),
@@ -370,6 +377,7 @@ class FileReaderImpl : public FileReader {
   MemoryPool* pool_;
   std::unique_ptr<ParquetFileReader> reader_;
   ArrowReaderProperties reader_properties_;
+  std::shared_ptr<::arrow::internal::ThreadPool> threadpool_;
 
   SchemaManifest manifest_;
 };
@@ -1257,6 +1265,7 @@ Status FileReader::Make(::arrow::MemoryPool* pool,
                         std::unique_ptr<FileReader>* out) {
   return Make(pool, std::move(reader), default_arrow_reader_properties(), out);
 }
+
 
 FileReaderBuilder::FileReaderBuilder()
     : pool_(::arrow::default_memory_pool()),
