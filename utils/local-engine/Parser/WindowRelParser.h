@@ -6,6 +6,7 @@
 #include <Parser/RelParser.h>
 #include <base/logger_useful.h>
 #include <Poco/Logger.h>
+#include <Processors/QueryPlan/QueryPlan.h>
 namespace local_engine
 {
 class WindowRelParser : public RelParser
@@ -39,6 +40,8 @@ private:
     String getWindowName(const substrait::WindowRel & win_rel, const substrait::Expression::WindowFunction & window_function);
     static String getWindowFunctionColumnName(const substrait::WindowRel & win_rel);
     void tryAddProjectionBeforeWindow(QueryPlan & plan, const substrait::WindowRel & win_rel);
+
+    void projectLeadLagDefaultValue(DB::QueryPlan & plan, const substrait::WindowRel & win_rel);
 };
 
 

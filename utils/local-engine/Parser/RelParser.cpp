@@ -119,7 +119,6 @@ RelParserFactory::RelParserBuilder RelParserFactory::getBuilder(DB::UInt32 k)
     return it->second;
 }
 
-
 void registerWindowRelParser(RelParserFactory & factory);
 void registerSortRelParser(RelParserFactory & factory);
 void registerExpandRelParser(RelParserFactory & factory);

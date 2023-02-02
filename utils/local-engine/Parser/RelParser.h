@@ -43,6 +43,7 @@ protected:
     {
         return plan_parser->parseArgument(action_dag, rel);
     }
+
 private:
     SerializedPlanParser * plan_parser;
 };
