@@ -42,6 +42,7 @@ void registerAllFunctions()
 }
 constexpr auto CH_BACKEND_CONF_PREFIX = "spark.gluten.sql.columnar.backend.ch";
 constexpr auto CH_RUNTIME_CONF = "runtime_conf";
+constexpr auto GLUTEN_TIMEZONE_KEY = "spark.gluten.timezone";
 
 /// For using gluten, we recommend to pass clickhouse runtime configure by using --files in spark-submit.
 /// And set the parameter CH_BACKEND_CONF_PREFIX.CH_RUNTIME_CONF.conf_file
@@ -81,7 +82,7 @@ static std::map<std::string, std::string> getBackendConf(const std::string & pla
             if (!key.has_string() || !value.has_string())
                 continue;
 
-            if (!key.string().starts_with(CH_BACKEND_CONF_PREFIX))
+            if (!key.string().starts_with(CH_BACKEND_CONF_PREFIX) && key.string() != std::string(GLUTEN_TIMEZONE_KEY))
                 continue;
 
             ch_backend_conf[key.string()] = value.string();
@@ -148,6 +149,10 @@ void init(const std::string & plan)
                         local_engine::SerializedPlanParser::config->setString(
                             kv.first.substr(ch_runtime_conf_prefix.size() + 1), kv.second);
                     }
+                    else if (kv.first == std::string(GLUTEN_TIMEZONE_KEY))
+                    {
+                        local_engine::SerializedPlanParser::config->setString(kv.first, kv.second);
+                    }
                 }
             }
 
@@ -163,6 +168,17 @@ void init(const std::string & plan)
                 local_engine::Logger::initConsoleLogger(level);
             }
             LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Init logger.");
+
+            if (config->has(GLUTEN_TIMEZONE_KEY))
+            {
+                const std::string config_timezone = config->getString(GLUTEN_TIMEZONE_KEY);
+                if (0 != setenv("TZ", config_timezone.data(), 1))
+                    throw Poco::Exception("Cannot setenv TZ variable");
+
+                tzset();
+                DateLUT::setDefaultTimezone(config_timezone);
+                LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Init timezone {}.", config_timezone);
+            }
 
             /// Initialize settings
             auto settings = Settings();
