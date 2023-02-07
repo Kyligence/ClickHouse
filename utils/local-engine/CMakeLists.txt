@@ -20,6 +20,7 @@ add_headers_and_sources(shuffle Shuffle)
 add_headers_and_sources(operator Operator)
 add_headers_and_sources(jni jni)
 add_headers_and_sources(aggregate AggregateFunctions)
+add_headers_and_sources(functions Functions)
 
 include_directories(
         ${JNI_INCLUDE_DIRS}
@@ -50,6 +51,7 @@ add_library(${LOCALENGINE_SHARED_LIB} SHARED
         ${substrait_source}
         ${operator_sources}
         ${aggregate_sources}
+        ${functions_sources}
         local_engine_jni.cpp)
 
 

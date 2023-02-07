@@ -2,6 +2,7 @@
 #include <AggregateFunctions/AggregateFunctionFactory.h>
 #include <Functions/registerFunctions.h>
 #include <AggregateFunctions/AggregateFunctionCombinatorFactory.h>
+#include <Functions/FunctionFactory.h>
 #include <Interpreters/Context.h>
 #include <Interpreters/JIT/CompiledExpressionCache.h>
 #include <Parser/SerializedPlanParser.h>
@@ -25,6 +26,7 @@ namespace fs = std::filesystem;
 
 namespace local_engine {
     extern void registerAggregateFunctionCombinatorPartialMerge(AggregateFunctionCombinatorFactory &);
+    extern void registerFunctions(FunctionFactory  &);
 }
 
 #ifdef __cplusplus
@@ -36,8 +38,10 @@ void registerAllFunctions()
     registerFunctions();
 
     registerAggregateFunctions();
-    auto & factory = AggregateFunctionCombinatorFactory::instance();
-    local_engine::registerAggregateFunctionCombinatorPartialMerge(factory);
+    auto & factoryAgg = AggregateFunctionCombinatorFactory::instance();
+    local_engine::registerAggregateFunctionCombinatorPartialMerge(factoryAgg);
+    auto & factory = FunctionFactory::instance();
+    local_engine::registerFunctions(factory);
 
 }
 constexpr auto CH_BACKEND_CONF_PREFIX = "spark.gluten.sql.columnar.backend.ch";

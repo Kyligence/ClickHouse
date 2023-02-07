@@ -224,7 +224,6 @@ std::string getDecimalFunction(const substrait::Type_Decimal & decimal, const bo
 
     return ch_function_name;
 }
-
 /// TODO: This function needs to be improved for Decimal/Array/Map/Tuple types.
 std::string getCastFunction(const substrait::Type & type)
 {
@@ -1133,6 +1132,39 @@ SerializedPlanParser::getFunctionName(const std::string & function_signature, co
     if (function_name == "cast")
     {
         ch_function_name = getCastFunction(output_type);
+    }
+    else if (function_name == "trim")
+    {
+        if (args.size() == 1)
+        {
+            ch_function_name = "trimBoth";
+        }
+        if (args.size() == 2)
+        {
+            ch_function_name = "sparkTrimBoth";
+        }
+    }
+    else if (function_name == "ltrim")
+    {
+        if (args.size() == 1)
+        {
+            ch_function_name = "trimLeft";
+        }
+        if (args.size() == 2)
+        {
+            ch_function_name = "sparkTrimLeft";
+        }
+    }
+    else if (function_name == "rtrim")
+    {
+        if (args.size() == 1)
+        {
+            ch_function_name = "trimRight";
+        }
+        if (args.size() == 2)
+        {
+            ch_function_name = "sparkTrimRigth";
+        }
     }
     else if (function_name == "extract")
     {
