@@ -1314,9 +1314,9 @@ void SerializedPlanParser::parseFunctionArguments(
         auto data_type = parseType(scalar_function.output_type());
         parsed_args.emplace_back(add_column(std::make_shared<DB::DataTypeString>(), data_type->getName()));
     }
-    else if (function_name == "tupleElement")
+    else if (function_name == "tupleElement" || function_name == "repeat")
     {
-        // tupleElement. the field index must be unsigned integer in CH, cast the signed integer in substrait
+        // tupleElement/repeat. the field index must be unsigned integer in CH, cast the signed integer in substrait
         // which must be a positive value into unsigned integer here.
         parseFunctionArgument(actions_dag, parsed_args, required_columns, function_name, args[0]);
 
@@ -1330,7 +1330,11 @@ void SerializedPlanParser::parseFunctionArguments(
         {
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "get_struct_field's second argument must be i32");
         }
-        UInt32 field_index = field.get<Int32>() + 1;
+        UInt32 field_index = field.get<Int32>();
+        if (function_name == "tupleElement")
+        {
+           field_index = field_index + 1;
+        }
         const auto * index_node = add_column(std::make_shared<DB::DataTypeUInt32>(), field_index);
         parsed_args.emplace_back(index_node);
     }
