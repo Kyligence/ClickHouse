@@ -1472,7 +1472,7 @@ void SerializedPlanParser::parseFunctionArguments(
     DB::ActionsDAGPtr & actions_dag,
     ActionsDAG::NodeRawConstPtrs & parsed_args,
     std::vector<String> & required_columns,
-    const std::string & function_name,
+    std::string & function_name,
     const substrait::Expression_ScalarFunction & scalar_function)
 {
     auto add_column = [&](const DataTypePtr & type, const Field & field) -> auto
@@ -1624,6 +1624,15 @@ void SerializedPlanParser::parseFunctionArguments(
             start_pos_node = ActionsDAGUtil::convertNodeType(actions_dag, start_pos_node, target_type.getName());
             parsed_args.emplace_back(start_pos_node);
         }
+    }
+    else if (function_name == "space")
+    {
+        // convert space function to repeat
+        const DB::ActionsDAG::Node * repeat_times_node = parseFunctionArgument(actions_dag, required_columns, "repeat", args[0]);
+        const DB::ActionsDAG::Node * space_str_node = add_column(std::make_shared<DataTypeString>(), " ");
+        function_name = "repeat";
+        parsed_args.emplace_back(space_str_node);
+        parsed_args.emplace_back(repeat_times_node);
     }
     else
     {
