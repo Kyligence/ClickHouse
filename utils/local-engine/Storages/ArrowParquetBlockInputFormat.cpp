@@ -51,7 +51,11 @@ DB::Chunk ArrowParquetBlockInputFormat::generate()
     {
         prepareReader();
         file_reader->set_batch_size(8192);
-        if (row_group_indices.empty())
+        if (row_group_indices.empty() && file_reader->num_row_groups() == 0)
+        {
+            return {};
+        }
+        else if (row_group_indices.empty())
         {
             auto row_group_range = boost::irange(0, file_reader->num_row_groups());
             row_group_indices = std::vector(row_group_range.begin(), row_group_range.end());
