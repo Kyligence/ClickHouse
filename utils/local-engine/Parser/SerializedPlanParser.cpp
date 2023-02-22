@@ -1314,9 +1314,9 @@ void SerializedPlanParser::parseFunctionArguments(
         auto data_type = parseType(scalar_function.output_type());
         parsed_args.emplace_back(add_column(std::make_shared<DB::DataTypeString>(), data_type->getName()));
     }
-    else if (function_name == "tupleElement" || function_name == "repeat")
+    else if (function_name == "tupleElement")
     {
-        // tupleElement/repeat. the field index must be unsigned integer in CH, cast the signed integer in substrait
+        // tupleElement. the field index must be unsigned integer in CH, cast the signed integer in substrait
         // which must be a positive value into unsigned integer here.
         parseFunctionArgument(actions_dag, parsed_args, required_columns, function_name, args[0]);
 
@@ -1330,11 +1330,7 @@ void SerializedPlanParser::parseFunctionArguments(
         {
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "get_struct_field's second argument must be i32");
         }
-        UInt32 field_index = field.get<Int32>();
-        if (function_name == "tupleElement")
-        {
-           field_index = field_index + 1;
-        }
+        UInt32 field_index = field.get<Int32>() + 1;
         const auto * index_node = add_column(std::make_shared<DB::DataTypeUInt32>(), field_index);
         parsed_args.emplace_back(index_node);
     }
@@ -1382,6 +1378,17 @@ void SerializedPlanParser::parseFunctionArguments(
         else
             parsed_args.push_back(index_node);
 
+    }
+    else if (function_name == "repeat")
+    {
+        // repeat. the field index must be unsigned integer in CH, cast the signed integer in substrait
+        // which must be a positive value into unsigned integer here.
+        parseFunctionArgument(actions_dag, parsed_args, required_columns, function_name, args[0]);
+        const DB::ActionsDAG::Node * repeat_times_node =
+            parseFunctionArgument(actions_dag, required_columns, function_name, args[1]);
+        DB::DataTypeNullable target_type(std::make_shared<DB::DataTypeUInt32>());
+        repeat_times_node = ActionsDAGUtil::convertNodeType(actions_dag, repeat_times_node, target_type.getName());
+        parsed_args.emplace_back(repeat_times_node);
     }
     else
     {
