@@ -1379,6 +1379,21 @@ void SerializedPlanParser::parseFunctionArguments(
             parsed_args.push_back(index_node);
 
     }
+    else if (function_name == "locate")
+    {
+        // locate function in spark the first argument is sub-string, and the second is string. But in CH, the position 
+        // is reversed.
+        parseFunctionArgument(actions_dag, parsed_args, required_columns, function_name, args[1]);
+        parseFunctionArgument(actions_dag, parsed_args, required_columns, function_name, args[0]);
+        // locate function in spark the third argument is int32, and when the value less than or equals to 0, the result will be 0. 
+        // But in CH, the third argument type must be uint32.
+        const DB::ActionsDAG::Node * startPosNode = 
+            parseFunctionArgument(actions_dag, required_columns, function_name, args[2]);
+        const DB::ActionsDAG::NodeRawConstPtrs constPtr = startPosNode->children;
+        DB::DataTypeNullable target_type(std::make_shared<DB::DataTypeUInt32>());
+        startPosNode = ActionsDAGUtil::convertNodeType(actions_dag, startPosNode, target_type.getName());
+        parsed_args.emplace_back(startPosNode);
+    }
     else
     {
         // Default handle
@@ -1606,7 +1621,6 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
     {
         return &action_dag->addColumn(ColumnWithTypeAndName(type->createColumnConst(1, field), type, getUniqueName(toString(field))));
     };
-
     switch (rel.rex_type_case())
     {
         case substrait::Expression::RexTypeCase::kLiteral: {
@@ -1789,6 +1803,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
 QueryPlanPtr SerializedPlanParser::parse(const std::string & plan)
 {
     auto plan_ptr = std::make_unique<substrait::Plan>();
+    std::cout << "plan string:" << plan << std::endl;
     auto ok = plan_ptr->ParseFromString(plan);
     if (!ok)
         throw Exception(ErrorCodes::CANNOT_PARSE_PROTOBUF_SCHEMA, "Parse substrait::Plan from string failed");
@@ -2052,7 +2067,6 @@ LocalExecutor::~LocalExecutor()
         spark_buffer.reset();
     }
 }
-
 
 void LocalExecutor::execute(QueryPlanPtr query_plan)
 {
