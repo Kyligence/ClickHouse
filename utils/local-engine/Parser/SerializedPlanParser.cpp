@@ -1389,7 +1389,6 @@ void SerializedPlanParser::parseFunctionArguments(
         // But in CH, the third argument type must be uint32.
         const DB::ActionsDAG::Node * startPosNode = 
             parseFunctionArgument(actions_dag, required_columns, function_name, args[2]);
-        const DB::ActionsDAG::NodeRawConstPtrs constPtr = startPosNode->children;
         DB::DataTypeNullable target_type(std::make_shared<DB::DataTypeUInt32>());
         startPosNode = ActionsDAGUtil::convertNodeType(actions_dag, startPosNode, target_type.getName());
         parsed_args.emplace_back(startPosNode);
