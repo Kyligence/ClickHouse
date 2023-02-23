@@ -1620,6 +1620,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
     {
         return &action_dag->addColumn(ColumnWithTypeAndName(type->createColumnConst(1, field), type, getUniqueName(toString(field))));
     };
+
     switch (rel.rex_type_case())
     {
         case substrait::Expression::RexTypeCase::kLiteral: {
@@ -1802,7 +1803,6 @@ const ActionsDAG::Node * SerializedPlanParser::parseArgument(ActionsDAGPtr actio
 QueryPlanPtr SerializedPlanParser::parse(const std::string & plan)
 {
     auto plan_ptr = std::make_unique<substrait::Plan>();
-    std::cout << "plan string:" << plan << std::endl;
     auto ok = plan_ptr->ParseFromString(plan);
     if (!ok)
         throw Exception(ErrorCodes::CANNOT_PARSE_PROTOBUF_SCHEMA, "Parse substrait::Plan from string failed");
@@ -2066,6 +2066,7 @@ LocalExecutor::~LocalExecutor()
         spark_buffer.reset();
     }
 }
+
 
 void LocalExecutor::execute(QueryPlanPtr query_plan)
 {
