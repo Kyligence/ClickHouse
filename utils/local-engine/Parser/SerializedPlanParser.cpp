@@ -1617,15 +1617,8 @@ void SerializedPlanParser::parseFunctionArguments(
         {
             // add cast: cast(start_pos as UInt32)
             const auto * start_pos_node = parseFunctionArgument(actions_dag, required_columns, function_name, args[2]);
-            if (start_pos_node->result_type->isNullable())
-            {
-                start_pos_node = add_column(std::make_shared<DB::DataTypeUInt32>(), 0);
-            }
-            else
-            {
-                DB::DataTypeUInt32 target_type;
-                start_pos_node = ActionsDAGUtil::convertNodeType(actions_dag, start_pos_node, target_type.getName());
-            }
+            DB::DataTypeNullable target_type(std::make_shared<DB::DataTypeUInt32>());
+            start_pos_node = ActionsDAGUtil::convertNodeType(actions_dag, start_pos_node, target_type.getName());
             parsed_args.emplace_back(start_pos_node);
         }
     }
