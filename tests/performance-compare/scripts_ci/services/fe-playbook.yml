@@ -1,0 +1,60 @@
+---
+- hosts: driver
+  vars:
+    starrocks_home: "{{ install_dir }}/StarRocks-{{ starrock_version }}"
+    fe_home: "{{ starrocks_home }}/fe"
+    meta_home: "{{ fe_home }}/meta"
+  tasks:
+    - name: print starrocks home
+      debug:
+        msg: "{{ starrocks_home }}"
+    - name: print fe home
+      debug:
+        msg: "{{ fe_home }}"
+    - name: print meta home
+      debug:
+        msg: "{{ meta_home }}"
+    - name: create install dirs
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+    - name: check starrocks home directory is exist
+      stat:
+        path: "{{ starrocks_home }}"
+      register: dir_is_exist
+    - name: print starrocks home directory stat
+      debug:
+        msg: "{{ dir_is_exist }}"
+    - name: stop old starrocks if starrocks home exist
+      shell: "{{ fe_home }}/bin/stop_fe.sh --daemon"
+      when: dir_is_exist.stat.exists == True
+      ignore_errors: yes
+    - name: remove old starrocks metadata
+      file:
+        path: "{{ meta_home }}"
+        state: absent
+      when: dir_is_exist.stat.exists == True
+    - name: unzip starrocks tar.gz if starrocks home not exist
+      unarchive:
+        src: "{{ starrocks_home }}.tar.gz"
+        dest: "{{ install_dir }}"
+      when: dir_is_exist.stat.exists == False
+    - name: create fe metedata directory
+      file:
+        path: "{{ meta_home }}"
+        state: directory
+    - name: print JAVA_HOME
+      debug:
+        msg: "{{ JAVA_HOME }}"
+#    - name: config fe metadata path
+#      shell: "echo 'meta_dir={{ meta_home }}' | tee -a {{ fe_home }}/conf/fe.conf"
+    - name: config fe java home
+      shell: "sed '/JAVA_HOME/d' {{ fe_home }}/conf/fe.conf | echo JAVA_HOME={{ JAVA_HOME }} | tee -a {{ fe_home }}/conf/fe.conf"
+    - name: start fe
+      shell: "{{ fe_home }}/bin/start_fe.sh --daemon"
+    - name: check fe health
+      wait_for:
+        host: localhost
+        port: 8030
+        delay: 10
+        timeout: 180

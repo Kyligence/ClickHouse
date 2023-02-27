@@ -1,0 +1,33 @@
+---
+- hosts: exporter
+  vars:
+    exporter_home: "{{ install_dir }}/node_exporter-1.4.0.linux-amd64"
+    exec_file: "{{ exporter_home }}/node_exporter"
+  tasks:
+    - name: print exporter home
+      debug:
+        msg: "{{ exporter_home }}"
+    - name: mkdir exporter home
+      file:
+        path: "{{ exporter_home }}"
+        state: directory
+    - name: check exporter home directory is exist
+      stat:
+        path: "{{ exporter_home }}"
+      register: dir_is_exist
+    - name: print exporter home directory stat
+      debug:
+        msg: "{{ dir_is_exist }}"
+    - name: unzip exporter tar.gz if exporter home not exist
+      unarchive:
+        src: "{{ exporter_home }}.tar.gz"
+        dest: "{{ install_dir }}"
+      when: dir_is_exist.stat.exists == False
+    - name: start
+      shell: "nohup {{ exporter_home }}/node_exporter > {{ exporter_home }}/exporter.out &"
+    - name: check exporter health
+      wait_for:
+        host: localhost
+        port: 9100
+        delay: 10
+        timeout: 180

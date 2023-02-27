@@ -1,0 +1,62 @@
+---
+- hosts: workers
+  vars:
+    starrocks_home: "{{ install_dir }}/StarRocks-{{ starrock_version }}"
+    be_home: "{{ starrocks_home }}/be"
+    storage_home: "{{ be_home }}/storage"
+  tasks:
+    - name: print starrocks home
+      debug:
+        msg: "{{ starrocks_home }}"
+    - name: print be home
+      debug:
+        msg: "{{ be_home }}"
+    - name: create install dirs
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+    - name: check starrocks home directory is exist
+      stat:
+        path: "{{ starrocks_home }}"
+      register: dir_is_exist
+    - name: print starrocks home directory stat
+      debug:
+        msg: "{{ dir_is_exist }}"
+    - name: stop old starrocks be if starrocks home exist
+      shell: "{{ be_home }}/bin/stop_be.sh --daemon"
+      when: dir_is_exist.stat.exists == True
+      ignore_errors: yes
+    - name: remove old starrocks cluster id
+      file:
+        path: "{{ storage_home }}/cluster_id"
+        state: absent
+      when: dir_is_exist.stat.exists == True
+    - name: remove old starrocks storage
+      file:
+        path: "{{ storage_home }}"
+        state: absent
+      when: dir_is_exist.stat.exists == True
+      tags:
+      - clean
+    - name: unzip starrocks tar.gz if starrocks home not exist
+      unarchive:
+        src: "{{ starrocks_home }}.tar.gz"
+        dest: "{{ install_dir }}"
+      when: dir_is_exist.stat.exists == False
+    - name: create be storage directory
+      file:
+        path: "{{ storage_home }}"
+        state: directory
+    - name: print JAVA_HOME
+      debug:
+        msg: "{{ JAVA_HOME }}"
+    - name: config fe java home
+      shell: "sed '/JAVA_HOME/d' {{ be_home }}/conf/be.conf | echo JAVA_HOME={{ JAVA_HOME }} | tee -a {{ be_home }}/conf/be.conf"
+    - name: start be
+      shell: "{{ be_home }}/bin/start_be.sh --daemon"
+    - name: check be health
+      wait_for:
+        host: localhost
+        port: 9050
+        delay: 10
+        timeout: 180
