@@ -71,6 +71,7 @@
 #include <Core/ColumnWithTypeAndName.h>
 #include <Functions/FunctionsConversion.h>
 #include <DataTypes/DataTypeNullable.h>
+#include "DataTypes/IDataType.h"
 #include "Parsers/ExpressionListParsers.h"
 #include "SerializedPlanParser.h"
 #include <Parser/RelParser.h>
@@ -1468,6 +1469,36 @@ void SerializedPlanParser::parseFunctionArguments(
         parsed_args.emplace_back(pad_length_node);
 
         parseFunctionArgument(actions_dag, parsed_args, required_columns, function_name, args[2]);
+    }
+    else if (function_name == "isNaN")
+    {
+        // the result of isNaN(NULL) is NULL in CH, but false in Spark
+        const DB::ActionsDAG::Node * arg_node = nullptr;
+        if (args[0].value().has_cast())
+        {
+            arg_node = parseArgument(actions_dag, args[0].value().cast().input());
+            const auto * res_type = arg_node->result_type.get();
+            if (res_type->isNullable())
+            {
+                res_type = typeid_cast<const DB::DataTypeNullable *>(res_type)->getNestedType().get();
+            }
+            if (isString(*res_type))
+            {
+                DB::ActionsDAG::NodeRawConstPtrs cast_func_args = {arg_node};
+                arg_node = toFunctionNode(actions_dag, "toFloat64OrZero", cast_func_args);
+            }
+            else
+            {
+                arg_node = parseFunctionArgument(actions_dag, required_columns, function_name, args[0]);
+            }
+        }
+        else
+        {
+            arg_node = parseFunctionArgument(actions_dag, required_columns, function_name, args[0]);
+        }
+
+        DB::ActionsDAG::NodeRawConstPtrs ifnull_func_args = {arg_node, add_column(std::make_shared<DataTypeInt32>(), 0)};
+        parsed_args.emplace_back(toFunctionNode(actions_dag, "IfNull", ifnull_func_args));
     }
     else
     {

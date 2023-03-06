@@ -98,6 +98,7 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"check_overflow", "check_overflow"},
     {"factorial", "factorial"},
     {"rand", "randCanonical"},
+    {"isnan", "isNaN"},
 
     /// string functions
     {"like", "like"},
