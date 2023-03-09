@@ -94,10 +94,9 @@ public:
     /// If bytes in Spark Row is big-endian. If true, we have to transform them to little-endian afterwords
     static bool isBigEndianInSparkRow(const DB::DataTypePtr & type_without_nullable);
 
-    /// Convert Field with type Decimal128 to/from buffer in Spark Row(big-endian)
-    static void swapBytes(DB::Decimal128 & decimal128);
-
     /// Convert endian. Big to little or little to big.
+    /// Note: Spark unsafeRow biginteger is big-endian.
+    ///       CH Int128 is little-endian, is same as system(std::endian::native).
     static void swapDecimalEndianBytes(String & buf);
 
     static int64_t getOffsetAndSize(int64_t cursor, int64_t size);

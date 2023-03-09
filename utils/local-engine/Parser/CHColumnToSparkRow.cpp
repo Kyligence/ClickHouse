@@ -541,20 +541,15 @@ bool BackingDataLengthCalculator::isBigEndianInSparkRow(const DB::DataTypePtr & 
     return which.isDecimal128();
 }
 
-void BackingDataLengthCalculator::swapBytes(DB::Decimal128 & decimal128)
-{
-    auto & x = decimal128.value;
-    for (size_t i = 0; i != std::size(x.items); ++i)
-        x.items[i] = __builtin_bswap64(x.items[i]);
-}
-
 void BackingDataLengthCalculator::swapDecimalEndianBytes(String & buf)
 {
     assert(buf.size() == 16);
 
     using base_type = Decimal128::NativeType::base_type;
     auto * decimal128 = reinterpret_cast<Decimal128 *>(buf.data());
-    swapBytes(*decimal128);
+    for (size_t i = 0; i != std::size(decimal128->value.items); ++i)
+        decimal128->value.items[i] = __builtin_bswap64(decimal128->value.items[i]);
+
     base_type * high = reinterpret_cast<base_type *>(buf.data() + 8);
     base_type * low = reinterpret_cast<base_type *>(buf.data());
     std::swap(*high, *low);
@@ -747,8 +742,9 @@ int64_t VariableLengthDataWriter::write(size_t row_idx, const DB::Field & field,
     {
         const auto & decimal_field = field.safeGet<DecimalField<Decimal128>>();
         auto decimal128 = decimal_field.getValue();
-        BackingDataLengthCalculator::swapBytes(decimal128);
-        return writeUnalignedBytes(row_idx, reinterpret_cast<const char *>(&decimal128), sizeof(Decimal128), parent_offset);
+        String buf(reinterpret_cast<const char *>(&decimal128), sizeof(decimal128));
+        BackingDataLengthCalculator::swapDecimalEndianBytes(buf);
+        return writeUnalignedBytes(row_idx, buf.c_str(), sizeof(Decimal128), parent_offset);
     }
 
     if (which.isArray())
