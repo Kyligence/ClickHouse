@@ -733,8 +733,20 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel, std::list
             rel_stack.pop_back();
             std::string filter_name;
             std::vector<String> required_columns;
-            auto actions_dag = parseFunction(
-                query_plan->getCurrentDataStream().header, filter.condition(), filter_name, required_columns, nullptr, true);
+
+            ActionsDAGPtr actions_dag = nullptr;
+            if (filter.condition().has_scalar_function())
+            {
+                actions_dag = parseFunction(
+                    query_plan->getCurrentDataStream().header, filter.condition(), filter_name, required_columns, nullptr, true);
+            }
+            else
+            {
+                actions_dag = std::make_shared<ActionsDAG>(blockToNameAndTypeList(query_plan->getCurrentDataStream().header));
+                const auto * node = parseArgument(actions_dag, filter.condition());
+                filter_name = node->result_name;
+            }
+
             auto input = query_plan->getCurrentDataStream().header.getNames();
             Names input_with_condition(input);
             input_with_condition.emplace_back(filter_name);
