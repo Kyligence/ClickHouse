@@ -17,7 +17,9 @@ struct SplitOptions
     size_t split_size = DEFAULT_BLOCK_SIZE;
     size_t io_buffer_size = DBMS_DEFAULT_BUFFER_SIZE;
     std::string data_file;
-    std::string local_tmp_dir;
+    std::vector<std::string> local_dirs_list;
+    int num_sub_dirs;
+    int shuffle_id;
     int map_id;
     size_t partition_nums;
     std::string exprs;

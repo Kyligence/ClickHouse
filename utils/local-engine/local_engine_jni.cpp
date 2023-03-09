@@ -596,11 +596,13 @@ jlong Java_io_glutenproject_vectorized_CHShuffleSplitterJniWrapper_nativeMake(
     jint num_partitions,
     jbyteArray expr_list,
     jbyteArray expr_index_list,
+    jint shuffle_id,
     jlong map_id,
     jint split_size,
     jstring codec,
     jstring data_file,
-    jstring local_dirs)
+    jstring local_dirs,
+    jint num_sub_dirs)
 {
     LOCAL_ENGINE_JNI_METHOD_START
     std::vector<std::string> expr_vec;
@@ -626,11 +628,17 @@ jlong Java_io_glutenproject_vectorized_CHShuffleSplitterJniWrapper_nativeMake(
         delete[] str;
     }
 
+    Poco::StringTokenizer local_dirs_tokenizer(jstring2string(env, local_dirs), ",");
+    std::vector<std::string> local_dirs_list;
+    local_dirs_list.insert(local_dirs_list.end(), local_dirs_tokenizer.begin(), local_dirs_tokenizer.end());
+
     local_engine::SplitOptions options{
         .split_size = static_cast<size_t>(split_size),
         .io_buffer_size = DBMS_DEFAULT_BUFFER_SIZE,
         .data_file = jstring2string(env, data_file),
-        .local_tmp_dir = jstring2string(env, local_dirs),
+        .local_dirs_list = std::move(local_dirs_list),
+        .num_sub_dirs = num_sub_dirs,
+        .shuffle_id = shuffle_id,
         .map_id = static_cast<int>(map_id),
         .partition_nums = static_cast<size_t>(num_partitions),
         .exprs = exprs,
