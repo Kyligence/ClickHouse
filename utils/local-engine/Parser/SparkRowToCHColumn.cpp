@@ -145,10 +145,11 @@ StringRef VariableLengthDataReader::readUnalignedBytes(const char * buffer, size
 
 Field VariableLengthDataReader::readDecimal(const char * buffer, size_t length) const
 {
-    constexpr int size = sizeof(Decimal128);
-    char decimal128_fix_data[size] = {};
-    memcpy(decimal128_fix_data + size - length, buffer, length); // padding
-    String buf(decimal128_fix_data, size);
+    assert(sizeof(Decimal128) <= length);
+
+    char decimal128_fix_data[sizeof(Decimal128)] = {};
+    memcpy(decimal128_fix_data + sizeof(Decimal128) - length, buffer, length); // padding
+    String buf(decimal128_fix_data, sizeof(Decimal128));
     BackingDataLengthCalculator::swapDecimalEndianBytes(buf); // Big-endian to Little-endian
 
     auto * decimal128 = reinterpret_cast<Decimal128 *>(buf.data());
