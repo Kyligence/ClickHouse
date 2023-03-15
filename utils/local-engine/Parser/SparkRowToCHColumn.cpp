@@ -169,7 +169,7 @@ Field VariableLengthDataReader::readArray(const char * buffer, [[maybe_unused]] 
     /// Read numElements
     int64_t num_elems = 0;
     memcpy(&num_elems, buffer, 8);
-    if (num_elems == 0)
+    if (num_elems == 0 || length == 0)
         return Array();
 
     /// Skip null_bitmap
@@ -232,7 +232,7 @@ Field VariableLengthDataReader::readMap(const char * buffer, size_t length) cons
     /// Read Length of UnsafeArrayData of key
     int64_t key_array_size = 0;
     memcpy(&key_array_size, buffer, 8);
-    if (key_array_size == 0)
+    if (key_array_size == 0 || length == 0)
         return std::move(Map());
 
     /// Read UnsafeArrayData of keys
