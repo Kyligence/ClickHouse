@@ -204,6 +204,7 @@ DataTypePtr wrapNullableType(bool nullable, DataTypePtr nested_type);
 class SerializedPlanParser
 {
     friend class RelParser;
+    friend class ASTParser;
 public:
     explicit SerializedPlanParser(const ContextPtr & context);
     static void initFunctionEnv();
@@ -241,6 +242,13 @@ private:
     void
     collectJoinKeys(const substrait::Expression & condition, std::vector<std::pair<int32_t, int32_t>> & join_keys, int32_t right_key_start);
     DB::QueryPlanPtr parseJoin(substrait::JoinRel join, DB::QueryPlanPtr left, DB::QueryPlanPtr right);
+    void parseJoinKeysAndCondition(
+        std::shared_ptr<TableJoin> table_join,
+        substrait::JoinRel & join,
+        DB::QueryPlanPtr & left,
+        DB::QueryPlanPtr & right,
+        const NamesAndTypesList & alias_right,
+        Names & names);
 
     static void reorderJoinOutput(DB::QueryPlan & plan, DB::Names cols);
     static std::string getFunctionName(const std::string & function_sig, const substrait::Expression_ScalarFunction & function);
@@ -375,5 +383,24 @@ private:
     std::unique_ptr<CHColumnToSparkRow> ch_column_to_spark_row;
     std::unique_ptr<SparkBuffer> spark_buffer;
     DB::QueryPlanPtr current_query_plan;
+};
+
+
+class ASTParser
+{
+public:
+    explicit ASTParser(const ContextPtr & _context, std::unordered_map<std::string, std::string> & _function_mapping)
+        : context(_context), function_mapping(_function_mapping){};
+    ~ASTParser() = default;
+
+    ASTPtr parseToAST(const Names & names, const substrait::Expression & rel);
+    ActionsDAGPtr convertToActions(const NamesAndTypesList & name_and_types, const ASTPtr & ast);
+
+private:
+    ContextPtr context;
+    std::unordered_map<std::string, std::string> function_mapping;
+
+    void parseFunctionArgumentsToAST(const Names & names, const substrait::Expression_ScalarFunction & scalar_function, ASTs & ast_args);
+    ASTPtr parseArgumentToAST(const Names & names, const substrait::Expression & rel);
 };
 }

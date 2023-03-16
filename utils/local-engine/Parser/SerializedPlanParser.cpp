@@ -26,6 +26,8 @@
 #include <Functions/FunctionFactory.h>
 #include <Functions/registerFunctions.h>
 #include <Interpreters/ActionsDAG.h>
+#include <Interpreters/ActionsVisitor.h>
+#include <Interpreters/CollectJoinOnKeysVisitor.h>
 #include <Interpreters/Context.h>
 #include <Interpreters/HashJoin.h>
 #include <Operator/PartitionColumnFillingTransform.h>
@@ -88,6 +90,7 @@ namespace ErrorCodes
     extern const int UNKNOWN_FUNCTION;
     extern const int CANNOT_PARSE_PROTOBUF_SCHEMA;
     extern const int ILLEGAL_TYPE_OF_ARGUMENT;
+    extern const int INVALID_JOIN_ON_EXPRESSION;
 }
 }
 
@@ -2131,6 +2134,11 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
         table_join->setKind(DB::JoinKind::Left);
         table_join->setStrictness(DB::JoinStrictness::All);
     }
+    else if (join.type() == substrait::JoinRel_JoinType_JOIN_TYPE_OUTER)
+    {
+        table_join->setKind(DB::JoinKind::Full);
+        table_join->setStrictness(DB::JoinStrictness::All);
+    }
     else
     {
         throw Exception(ErrorCodes::UNKNOWN_TYPE, "unsupported join type {}.", magic_enum::enum_name(join.type()));
@@ -2151,7 +2159,6 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
         }
     }
 
-    table_join->addDisjunct();
     NameSet left_columns_set;
     for (const auto & col : left->getCurrentDataStream().header.getNames())
     {
@@ -2179,15 +2186,6 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
         project_step->setStepDescription("Right Table Rename");
         right->addStep(std::move(project_step));
     }
-    // support multiple join key
-    std::vector<std::pair<int32_t, int32_t>> join_keys;
-    collectJoinKeys(join.expression(), join_keys, left->getCurrentDataStream().header.columns());
-    for (auto key : join_keys)
-    {
-        ASTPtr left_key = std::make_shared<ASTIdentifier>(left->getCurrentDataStream().header.getByPosition(key.first).name);
-        ASTPtr right_key = std::make_shared<ASTIdentifier>(right->getCurrentDataStream().header.getByPosition(key.second).name);
-        table_join->addOnKeys(left_key, right_key);
-    }
 
     for (const auto & column : table_join->columnsFromJoinedTable())
     {
@@ -2207,7 +2205,7 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
 
     if (left_convert_actions)
     {
-        auto converting_step = std::make_unique<ExpressionStep>(left->getCurrentDataStream(), right_convert_actions);
+        auto converting_step = std::make_unique<ExpressionStep>(left->getCurrentDataStream(), left_convert_actions);
         converting_step->setStepDescription("Convert joined columns");
         left->addStep(std::move(converting_step));
     }
@@ -2217,6 +2215,26 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     after_join_names.insert(after_join_names.end(), left_names.begin(), left_names.end());
     auto right_name = table_join->columnsFromJoinedTable().getNames();
     after_join_names.insert(after_join_names.end(), right_name.begin(), right_name.end());
+
+    bool add_filter_step = false;
+    try
+    {
+        parseJoinKeysAndCondition(table_join, join, left, right, table_join->columnsFromJoinedTable(), after_join_names);
+    }
+    // if ch not support the join type or join conditions, it will throw an exception like 'not support'.
+    catch (Poco::Exception & e)
+    {
+        // CH not support join condition has 'or' and has different table in each side.
+        // But in inner join, we could execute join condition after join. so we have add filter step
+        if (e.code() == ErrorCodes::INVALID_JOIN_ON_EXPRESSION && table_join->kind() == DB::JoinKind::Inner)
+        {
+            add_filter_step = true;
+        }
+        else
+        {
+            throw;
+        }
+    }
 
     if (join_opt_info.is_broadcast)
     {
@@ -2249,7 +2267,7 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     }
 
     reorderJoinOutput(*query_plan, after_join_names);
-    if (join.has_post_join_filter())
+    if (add_filter_step)
     {
         std::string filter_name;
         std::vector<String> useless;
@@ -2261,6 +2279,260 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     }
     return query_plan;
 }
+
+void SerializedPlanParser::parseJoinKeysAndCondition(
+    std::shared_ptr<TableJoin> table_join,
+    substrait::JoinRel & join,
+    DB::QueryPlanPtr & left,
+    DB::QueryPlanPtr & right,
+    const NamesAndTypesList & alias_right,
+    Names & names)
+{
+    ASTs args;
+    ASTParser astParser(context, function_mapping);
+
+    if (join.has_expression())
+    {
+        args.emplace_back(astParser.parseToAST(names, join.expression()));
+    }
+
+    if (join.has_post_join_filter())
+    {
+        args.emplace_back(astParser.parseToAST(names, join.post_join_filter()));
+    }
+
+    if (args.empty())
+        return;
+
+    ASTPtr ast = args.size() == 1 ? args.back() : makeASTFunction("and", args);
+
+    bool is_asof = (table_join->strictness() == JoinStrictness::Asof);
+
+    Aliases aliases;
+    DatabaseAndTableWithAlias left_table_name;
+    DatabaseAndTableWithAlias right_table_name;
+    TableWithColumnNamesAndTypes left_table(left_table_name, left->getCurrentDataStream().header.getNamesAndTypesList());
+    TableWithColumnNamesAndTypes right_table(right_table_name, alias_right);
+
+    CollectJoinOnKeysVisitor::Data data{*table_join, left_table, right_table, aliases, is_asof};
+    if (auto * or_func = ast->as<ASTFunction>(); or_func && or_func->name == "or")
+    {
+        for (auto & disjunct : or_func->arguments->children)
+        {
+            table_join->addDisjunct();
+            CollectJoinOnKeysVisitor(data).visit(disjunct);
+        }
+        assert(table_join->getClauses().size() == or_func->arguments->children.size());
+    }
+    else
+    {
+        table_join->addDisjunct();
+        CollectJoinOnKeysVisitor(data).visit(ast);
+        assert(table_join->oneDisjunct());
+    }
+
+    if (join.has_post_join_filter())
+    {
+        auto left_keys = table_join->leftKeysList();
+        auto right_keys = table_join->rightKeysList();
+        if (!left_keys->children.empty())
+        {
+            auto actions = astParser.convertToActions(left->getCurrentDataStream().header.getNamesAndTypesList(), left_keys);
+            QueryPlanStepPtr before_join_step = std::make_unique<ExpressionStep>(left->getCurrentDataStream(), actions);
+            before_join_step->setStepDescription("Before JOIN LEFT");
+            left->addStep(std::move(before_join_step));
+        }
+
+        if (!right_keys->children.empty())
+        {
+            auto actions = astParser.convertToActions(right->getCurrentDataStream().header.getNamesAndTypesList(), right_keys);
+            QueryPlanStepPtr before_join_step = std::make_unique<ExpressionStep>(right->getCurrentDataStream(), actions);
+            before_join_step->setStepDescription("Before JOIN RIGHT");
+            right->addStep(std::move(before_join_step));
+        }
+    }
+}
+
+ActionsDAGPtr ASTParser::convertToActions(const NamesAndTypesList & name_and_types, const ASTPtr & ast)
+{
+    NamesAndTypesList aggregation_keys;
+    ColumnNumbersList aggregation_keys_indexes_list;
+    AggregationKeysInfo info(aggregation_keys, aggregation_keys_indexes_list, GroupByKind::NONE);
+    SizeLimits size_limits_for_set;
+    ActionsVisitor::Data visitor_data(
+        context,
+        size_limits_for_set,
+        size_t(0),
+        name_and_types,
+        std::make_shared<ActionsDAG>(name_and_types),
+        nullptr /* prepared_sets */,
+        false /* no_subqueries */,
+        false /* no_makeset */,
+        false /* only_consts */,
+        false /* create_source_for_in */,
+        info);
+    ActionsVisitor(visitor_data).visit(ast);
+    return visitor_data.getActions();
+}
+
+ASTPtr ASTParser::parseToAST(const Names & names, const substrait::Expression & rel)
+{
+    LOG_DEBUG(&Poco::Logger::get("ASTParser"), "substrait plan:{}", rel.DebugString());
+    if (!rel.has_scalar_function())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "the root of expression should be a scalar function:\n {}", rel.DebugString());
+
+    const auto & scalar_function = rel.scalar_function();
+    auto function_signature = function_mapping.at(std::to_string(rel.scalar_function().function_reference()));
+    auto function_name = SerializedPlanParser::getFunctionName(function_signature, scalar_function);
+    ASTs ast_args;
+    parseFunctionArgumentsToAST(names, scalar_function, ast_args);
+
+    return makeASTFunction(function_name, ast_args);
+}
+
+void ASTParser::parseFunctionArgumentsToAST(
+    const Names & names, const substrait::Expression_ScalarFunction & scalar_function, ASTs & ast_args)
+{
+    const auto & args = scalar_function.arguments();
+
+    for (const auto & arg : args)
+    {
+        if (arg.value().has_scalar_function())
+        {
+            ast_args.emplace_back(parseToAST(names, arg.value()));
+        }
+        else
+        {
+            ast_args.emplace_back(parseArgumentToAST(names, arg.value()));
+        }
+    }
+}
+
+ASTPtr ASTParser::parseArgumentToAST(const Names & names, const substrait::Expression & rel)
+{
+    switch (rel.rex_type_case())
+    {
+        case substrait::Expression::RexTypeCase::kLiteral: {
+            DataTypePtr type;
+            Field field;
+            std::tie(std::ignore, field) = SerializedPlanParser::parseLiteral(rel.literal());
+            return std::make_shared<ASTLiteral>(field);
+        }
+        case substrait::Expression::RexTypeCase::kSelection: {
+            if (!rel.selection().has_direct_reference() || !rel.selection().direct_reference().has_struct_field())
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "Can only have direct struct references in selections");
+
+            const auto field = rel.selection().direct_reference().struct_field().field();
+            return std::make_shared<ASTIdentifier>(names[field]);
+        }
+        case substrait::Expression::RexTypeCase::kCast: {
+            if (!rel.cast().has_type() || !rel.cast().has_input())
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "Doesn't have type or input in cast node.");
+
+            std::string ch_function_name = getCastFunction(rel.cast().type());
+
+            ASTs args;
+            args.emplace_back(parseArgumentToAST(names, rel.cast().input()));
+
+            if (ch_function_name.starts_with("toDecimal"))
+            {
+                UInt32 scale = rel.cast().type().decimal().scale();
+                args.emplace_back(std::make_shared<ASTLiteral>(scale));
+            }
+            else if (ch_function_name.starts_with("toDateTime64"))
+            {
+                /// In Spark: cast(xx as TIMESTAMP)
+                /// In CH: toDateTime(xx, 6)
+                /// So we must add extra argument: 6
+                args.emplace_back(std::make_shared<ASTLiteral>(6));
+            }
+
+            return makeASTFunction(ch_function_name, args);
+        }
+        case substrait::Expression::RexTypeCase::kIfThen: {
+            const auto & if_then = rel.if_then();
+            const auto * ch_function_name = "multiIf";
+            auto function_multi_if = DB::FunctionFactory::instance().get(ch_function_name, context);
+            ASTs args;
+
+            auto condition_nums = if_then.ifs_size();
+            for (int i = 0; i < condition_nums; ++i)
+            {
+                const auto & ifs = if_then.ifs(i);
+                auto if_node = parseArgumentToAST(names, ifs.if_());
+                args.emplace_back(if_node);
+
+                auto then_node = parseArgumentToAST(names, ifs.then());
+                args.emplace_back(then_node);
+            }
+
+            auto else_node = parseArgumentToAST(names, if_then.else_());
+            return makeASTFunction(ch_function_name, args);
+        }
+        case substrait::Expression::RexTypeCase::kScalarFunction: {
+            return parseToAST(names, rel);
+        }
+        case substrait::Expression::RexTypeCase::kSingularOrList: {
+            const auto & options = rel.singular_or_list().options();
+            /// options is empty always return false
+            if (options.empty())
+                return std::make_shared<ASTLiteral>(0);
+            /// options should be literals
+            if (!options[0].has_literal())
+                throw Exception(ErrorCodes::LOGICAL_ERROR, "Options of SingularOrList must have literal type");
+
+            ASTs args;
+            args.emplace_back(parseArgumentToAST(names, rel.singular_or_list().value()));
+
+            bool nullable = false;
+            size_t options_len = options.size();
+            args.reserve(options_len);
+
+            for (size_t i = 0; i < options_len; ++i)
+            {
+                if (!options[i].has_literal())
+                    throw Exception(ErrorCodes::BAD_ARGUMENTS, "in expression values must be the literal!");
+                if (!nullable)
+                    nullable = options[i].literal().has_null();
+            }
+
+            auto elem_type_and_field = SerializedPlanParser::parseLiteral(options[0].literal());
+            DataTypePtr elem_type = wrapNullableType(nullable, elem_type_and_field.first);
+            for (size_t i = 0; i < options_len; ++i)
+            {
+                auto type_and_field = std::move(SerializedPlanParser::parseLiteral(options[i].literal()));
+                auto option_type = wrapNullableType(nullable, type_and_field.first);
+                if (!elem_type->equals(*option_type))
+                    throw Exception(
+                        ErrorCodes::LOGICAL_ERROR,
+                        "SingularOrList options type mismatch:{} and {}",
+                        elem_type->getName(),
+                        option_type->getName());
+
+                args.emplace_back(std::make_shared<ASTLiteral>(type_and_field.second));
+            }
+
+            auto ast = makeASTFunction("in", args);
+            if (nullable)
+            {
+                /// if sets has `null` and value not in sets
+                /// In Spark: return `null`, is the standard behaviour from ANSI.(SPARK-37920)
+                /// In CH: return `false`
+                /// So we used if(a, b, c) cast `false` to `null` if sets has `null`
+                ast = makeASTFunction("if", ast, std::make_shared<ASTLiteral>(true), std::make_shared<ASTLiteral>(Field()));
+            }
+
+            return ast;
+        }
+        default:
+            throw Exception(
+                ErrorCodes::UNKNOWN_TYPE,
+                "Join on condition error. Unsupported spark expression type {} : {}",
+                magic_enum::enum_name(rel.rex_type_case()),
+                rel.DebugString());
+    }
+}
+
 void SerializedPlanParser::reorderJoinOutput(QueryPlan & plan, DB::Names cols)
 {
     ActionsDAGPtr project = std::make_shared<ActionsDAG>(plan.getCurrentDataStream().header.getNamesAndTypesList());
