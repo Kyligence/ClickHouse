@@ -51,9 +51,13 @@ void registerAllFunctions()
     local_engine::registerFunctions(factory);
 
 }
-constexpr auto CH_BACKEND_CONF_PREFIX = "spark.gluten.sql.columnar.backend.ch";
-constexpr auto CH_RUNTIME_CONF = "runtime_conf";
-constexpr auto GLUTEN_TIMEZONE_KEY = "spark.gluten.timezone";
+
+static const String CH_BACKEND_CONF_PREFIX = "spark.gluten.sql.columnar.backend.ch";
+static const String CH_RUNTIME_CONF = "runtime_conf";
+static const String CH_RUNTIME_CONF_PREFIX = CH_BACKEND_CONF_PREFIX + "." + CH_RUNTIME_CONF;
+static const String CH_RUNTIME_CONF_FILE = CH_RUNTIME_CONF_PREFIX + ".conf_file";
+static const String GLUTEN_TIMEZONE_KEY = "spark.gluten.timezone";
+static const String LIBHDFS3_CONF_KEY = "hdfs.libhdfs3_conf";
 
 /// For using gluten, we recommend to pass clickhouse runtime configure by using --files in spark-submit.
 /// And set the parameter CH_BACKEND_CONF_PREFIX.CH_RUNTIME_CONF.conf_file
@@ -100,14 +104,13 @@ static std::map<std::string, std::string> getBackendConf(const std::string & pla
         }
     } while (false);
 
-    std::string ch_runtime_conf_file = std::string(CH_BACKEND_CONF_PREFIX) + "." + std::string(CH_RUNTIME_CONF) + ".conf_file";
-    if (!ch_backend_conf.count(ch_runtime_conf_file))
+    if (!ch_backend_conf.count(CH_RUNTIME_CONF_FILE))
     {
         /// Try to get config path from environment variable
-        const char * config_path = std::getenv("CLICKHOUSE_BACKEND_CONFIG");
+        const char * config_path = std::getenv("CLICKHOUSE_BACKEND_CONFIG"); /// NOLINT
         if (config_path)
         {
-            ch_backend_conf[ch_runtime_conf_file] = config_path;
+            ch_backend_conf[CH_RUNTIME_CONF_FILE] = config_path;
         }
     }
     return ch_backend_conf;
@@ -125,25 +128,23 @@ void init(const std::string & plan)
         {
             /// Load Config
             std::map<std::string, std::string> ch_backend_conf;
-            std::string ch_runtime_conf_prefix = std::string(CH_BACKEND_CONF_PREFIX) + "." + std::string(CH_RUNTIME_CONF);
-            std::string ch_runtime_conf_file = ch_runtime_conf_prefix + ".conf_file";
             if (!local_engine::SerializedPlanParser::config)
             {
                 ch_backend_conf = getBackendConf(plan);
 
                 /// If we have a configuration file, use it at first
-                if (ch_backend_conf.count(ch_runtime_conf_file))
+                if (ch_backend_conf.count(CH_RUNTIME_CONF_FILE))
                 {
-                    if (fs::exists(ch_runtime_conf_file) && fs::is_regular_file(ch_runtime_conf_file))
+                    if (fs::exists(CH_RUNTIME_CONF_FILE) && fs::is_regular_file(CH_RUNTIME_CONF_FILE))
                     {
-                        DB::ConfigProcessor config_processor(ch_runtime_conf_file, false, true);
-                        config_processor.setConfigPath(fs::path(ch_runtime_conf_file).parent_path());
+                        DB::ConfigProcessor config_processor(CH_RUNTIME_CONF_FILE, false, true);
+                        config_processor.setConfigPath(fs::path(CH_RUNTIME_CONF_FILE).parent_path());
                         auto loaded_config = config_processor.loadConfig(false);
                         local_engine::SerializedPlanParser::config = loaded_config.configuration;
                     }
                     else
                     {
-                        throw DB::Exception(DB::ErrorCodes::BAD_ARGUMENTS, "{} is not a valid configure file.", ch_runtime_conf_file);
+                        throw DB::Exception(DB::ErrorCodes::BAD_ARGUMENTS, "{} is not a valid configure file.", CH_RUNTIME_CONF_FILE);
                     }
                 }
                 else
@@ -154,11 +155,11 @@ void init(const std::string & plan)
                 /// Update specified settings
                 for (const auto & kv : ch_backend_conf)
                 {
-                    if (kv.first.starts_with(ch_runtime_conf_prefix) && kv.first != ch_runtime_conf_file)
+                    if (kv.first.starts_with(CH_RUNTIME_CONF_PREFIX) && kv.first != CH_RUNTIME_CONF_FILE)
                     {
                         /// Notice, you can set a conf by setString(), but get it by getInt()
                         local_engine::SerializedPlanParser::config->setString(
-                            kv.first.substr(ch_runtime_conf_prefix.size() + 1), kv.second);
+                            kv.first.substr(CH_RUNTIME_CONF_PREFIX.size() + 1), kv.second);
                     }
                     else if (kv.first == std::string(GLUTEN_TIMEZONE_KEY))
                     {
@@ -178,12 +179,13 @@ void init(const std::string & plan)
             {
                 local_engine::Logger::initConsoleLogger(level);
             }
-            LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Init logger.");
+            auto * logger = &Poco::Logger::get("ClickHouseBackend");
+            LOG_INFO(logger, "Init logger.");
 
             if (config->has(GLUTEN_TIMEZONE_KEY))
             {
                 const std::string config_timezone = config->getString(GLUTEN_TIMEZONE_KEY);
-                if (0 != setenv("TZ", config_timezone.data(), 1))
+                if (0 != setenv("TZ", config_timezone.data(), 1)) /// NOLINT
                     throw Poco::Exception("Cannot setenv TZ variable");
 
                 tzset();
@@ -201,7 +203,7 @@ void init(const std::string & plan)
                 settings.set(key, config->getString(settings_path + "." + key));
             }
             settings.set("join_use_nulls", true);
-            LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Init settings.");
+            LOG_INFO(logger, "Init settings.");
 
             /// Initialize global context
             if (!local_engine::SerializedPlanParser::global_context)
@@ -215,11 +217,11 @@ void init(const std::string & plan)
                 local_engine::SerializedPlanParser::global_context->setTemporaryStoragePath("/tmp/libch", 0);
                 auto path = config->getString("path", "/");
                 local_engine::SerializedPlanParser::global_context->setPath(path);
-                LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Init global context.");
+                LOG_INFO(logger, "Init global context.");
             }
 
             registerAllFunctions();
-            LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Register all functions.");
+            LOG_INFO(logger, "Register all functions.");
 
 #if USE_EMBEDDED_COMPILER
             /// 128 MB
@@ -230,10 +232,16 @@ void init(const std::string & plan)
             size_t compiled_expression_cache_elements_size = config->getUInt64("compiled_expression_cache_elements_size", compiled_expression_cache_elements_size_default);
 
             CompiledExpressionCacheFactory::instance().init(compiled_expression_cache_size, compiled_expression_cache_elements_size);
-            LOG_INFO(&Poco::Logger::get("ClickHouseBackend"), "Init compiled expressions cache factory.");
+            LOG_INFO(logger, "Init compiled expressions cache factory.");
 #endif
-        }
 
+            /// Set environment variable LIBHDFS3_CONF if possible
+            std::string libhdfs3_conf = config->getString(LIBHDFS3_CONF_KEY, "");
+            if (libhdfs3_conf.empty())
+                LOG_WARNING(logger, "Can't find {} in config file, it may cause error in Hadoop HA mode", LIBHDFS3_CONF_KEY);
+            else
+                setenv("LIBHDFS3_CONF", libhdfs3_conf.c_str(), true); /// NOLINT
+        }
     );
 }
 
