@@ -31,7 +31,7 @@ class ColumnsBuffer
 {
 public:
     explicit ColumnsBuffer(size_t prefer_buffer_size = 8192);
-    void add(DB::Block & columns, int start, int end);
+    void add(DB::Block & block, int start, int end);
     size_t size() const;
     DB::Block releaseColumns();
     DB::Block getHeader();

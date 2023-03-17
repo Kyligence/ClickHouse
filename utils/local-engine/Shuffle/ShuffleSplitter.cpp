@@ -59,21 +59,25 @@ void ShuffleSplitter::splitBlockByPartition(DB::Block & block)
     for (size_t i = 0; i < options.partition_nums; ++i)
     {
         split_result.raw_partition_length[i] += partitions[i].bytes();
+        size_t remain_rows = partitions[i].rows();
+        size_t offset = 0;
         ColumnsBuffer & buffer = partition_buffer[i];
-        size_t first_cache_count = std::min(partitions[i].rows(), options.split_size - buffer.size());
-        if (first_cache_count < partitions[i].rows())
+        size_t cur_split_count = std::min(remain_rows, options.split_size - buffer.size());
+        
+        while (cur_split_count < remain_rows)
         {
-            buffer.add(partitions[i], 0, first_cache_count);
+            buffer.add(partitions[i], offset, offset + cur_split_count);
+            offset += cur_split_count;
+            remain_rows -= cur_split_count;
+            
             spillPartition(i);
-            buffer.add(partitions[i], first_cache_count, partitions[i].rows());
+            
+            cur_split_count = std::min(remain_rows, options.split_size - buffer.size());
         }
-        else
+
+        if (remain_rows > 0)
         {
-            buffer.add(partitions[i], 0, first_cache_count);
-        }
-        if (buffer.size() == options.split_size)
-        {
-            spillPartition(i);
+            buffer.add(partitions[i], offset, partitions[i].rows());
         }
     }
 }
