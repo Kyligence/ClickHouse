@@ -4,11 +4,14 @@
 #include <Core/Block.h>
 #include <Core/ColumnWithTypeAndName.h>
 #include <Core/NamesAndTypes.h>
+#include <Common/logger_useful.h>
 #include <DataTypes/Serializations/ISerialization.h>
 #include <Interpreters/ActionsDAG.h>
+#include <Interpreters/Context.h>
 #include <Processors/Chunk.h>
 #include <Storages/IStorage.h>
 #include <base/types.h>
+
 namespace local_engine
 {
 
@@ -80,5 +83,65 @@ class QueryPipelineUtil
 public:
     static String explainPipeline(DB::QueryPipeline & pipeline);
 };
+
+class BackendInitializer
+{
+public:
+    static void init(const std::string & plan)
+    {
+        initBackendConfig(plan);
+        initBackendLoggers();
+
+        initBackendEnvs();
+        LOG_INFO(logger, "Init environment variables.");
+
+        initBackendSettings();
+        LOG_INFO(logger, "Init settings.");
+
+        initBackendContexts();
+        LOG_INFO(logger, "Init shared context and global context.");
+
+        applyConfigAndSettings();
+        LOG_INFO(logger, "Apply configuration and setting for global context.");
+
+        std::call_once(
+            init_flag,
+            [&]
+            {
+                registerAllFactories();
+                LOG_INFO(logger, "Register all factories.");
+
+                initBackendCompiledExpressionCache();
+                LOG_INFO(logger, "Init compiled expressions cache factory.");
+            });
+    }
+
+
+private:
+    static void initBackendConfig(const std::string & plan);
+    static void initBackendLoggers();
+    static void initBackendEnvs();
+    static void initBackendSettings();
+    static void initBackendContexts();
+    static void applyConfigAndSettings();
+    static void registerAllFactories();
+    static void initBackendCompiledExpressionCache();
+
+    static std::map<std::string, std::string> getBackendConfMap(const std::string & plan);
+
+    inline static const String CH_BACKEND_CONF_PREFIX = "spark.gluten.sql.columnar.backend.ch";
+    inline static const String CH_RUNTIME_CONF = "runtime_conf";
+    inline static const String CH_RUNTIME_CONF_PREFIX = CH_BACKEND_CONF_PREFIX + "." + CH_RUNTIME_CONF;
+    inline static const String CH_RUNTIME_CONF_FILE = CH_RUNTIME_CONF_PREFIX + ".conf_file";
+    inline static const String GLUTEN_TIMEZONE_KEY = "spark.gluten.timezone";
+    inline static const String LIBHDFS3_CONF_KEY = "hdfs.libhdfs3_conf";
+    inline static const String SETTINGs_PATH = "local_engine.settings";
+
+    inline static std::once_flag init_flag;
+    inline static DB::Context::ConfigurationPtr config;
+    inline static Poco::Logger * logger;
+    inline static DB::Settings settings;
+};
+
 
 }

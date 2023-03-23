@@ -158,7 +158,7 @@ private:
 };
 #endif
 
-void registerReadBufferBuildes(ReadBufferBuilderFactory & factory)
+void registerReadBufferBuilders(ReadBufferBuilderFactory & factory)
 {
     LOG_TRACE(&Poco::Logger::get("ReadBufferBuilderFactory"), "+registerReadBufferBuildes");
     factory.registerBuilder("file", [](DB::ContextPtr context_) { return std::make_shared<LocalFileReadBufferBuilder>(context_); });

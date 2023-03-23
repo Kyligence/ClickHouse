@@ -66,6 +66,5 @@ private:
     std::map<UInt32, RelParserBuilder> builders;
 };
 
-void initRelParserFactory();
-
+void registerRelParsers(RelParserFactory & factory);
 }

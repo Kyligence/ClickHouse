@@ -25,6 +25,7 @@
 #include <Common/ExceptionUtils.h>
 #include <Common/JNIUtils.h>
 #include <Common/QueryContext.h>
+#include <Common/CHUtil.h>
 
 
 #ifdef __cplusplus
@@ -82,8 +83,7 @@ extern "C" {
 #endif
 
 
-extern void registerAllFunctions();
-extern void init(const std::string &);
+extern void initBackend(const std::string &);
 extern char * createExecutor(const std::string &);
 
 namespace dbms
@@ -152,8 +152,6 @@ jint JNI_OnLoad(JavaVM * vm, void * /*reserved*/)
         = local_engine::GetMethodID(env, local_engine::ReservationListenerWrapper::reservation_listener_class, "unreserve", "(J)J");
 
     local_engine::JNIUtils::vm = vm;
-    local_engine::registerReadBufferBuildes(local_engine::ReadBufferBuilderFactory::instance());
-    local_engine::initRelParserFactory();
     return JNI_VERSION_1_8;
 }
 
@@ -169,12 +167,14 @@ void JNI_OnUnload(JavaVM * vm, void * /*reserved*/)
     env->DeleteGlobalRef(local_engine::NativeSplitter::iterator_class);
     env->DeleteGlobalRef(local_engine::WriteBufferFromJavaOutputStream::output_stream_class);
     env->DeleteGlobalRef(local_engine::ReservationListenerWrapper::reservation_listener_class);
+    /*
     if (local_engine::SerializedPlanParser::global_context)
     {
         local_engine::SerializedPlanParser::global_context->shutdown();
         local_engine::SerializedPlanParser::global_context.reset();
         local_engine::SerializedPlanParser::shared_context.reset();
     }
+    */
     local_engine::BroadCastJoinBuilder::clean();
 }
 
@@ -185,7 +185,7 @@ void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNa
     jbyte * plan_buf_addr = env->GetByteArrayElements(plan, nullptr);
     std::string plan_str;
     plan_str.assign(reinterpret_cast<const char *>(plan_buf_addr), plan_buf_size);
-    init(plan_str);
+    local_engine::BackendInitializer::init(plan_str);
     LOCAL_ENGINE_JNI_METHOD_END(env, )
 }
 

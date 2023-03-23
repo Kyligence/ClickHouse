@@ -20,18 +20,33 @@
 #include <DataTypes/Serializations/ISerialization.h>
 #include <Functions/CastOverloadResolver.h>
 #include <Functions/FunctionsConversion.h>
+#include <Functions/FunctionFactory.h>
+#include <Functions/registerFunctions.h>
+#include <AggregateFunctions/AggregateFunctionCombinatorFactory.h>
+#include <AggregateFunctions/registerAggregateFunctions.h>
 #include <IO/ReadBufferFromFile.h>
 #include <Interpreters/castColumn.h>
+#include <Interpreters/JIT/CompiledExpressionCache.h>
 #include <Processors/Chunk.h>
 #include <Processors/QueryPlan/QueryPlan.h>
 #include <QueryPipeline/QueryPipelineBuilder.h>
 #include <QueryPipeline/printPipeline.h>
+#include <Common/Config/ConfigProcessor.h>
 #include <Common/logger_useful.h>
+#include <Poco/Logger.h>
+#include <Poco/Util/MapConfiguration.h>
+#include <Common/typeid_cast.h>
+#include <substrait/algebra.pb.h>
+#include <substrait/plan.pb.h>
+#include <Parser/SerializedPlanParser.h>
+#include <Parser/RelParser.h>
+#include <Common/Logger.h>
+#include <Storages/SubstraitSource/ReadBufferBuilder.h>
+
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
-#include <Poco/Logger.h>
-#include <Common/CHUtil.h>
-#include <Common/typeid_cast.h>
+
+#include "CHUtil.h"
 
 namespace DB
 {
@@ -40,6 +55,7 @@ namespace ErrorCodes
     extern const int BAD_ARGUMENTS;
 }
 }
+
 namespace local_engine
 {
 constexpr auto VIRTUAL_ROW_COUNT_COLOUMN = "__VIRTUAL_ROW_COUNT_COLOUMNOUMN__";
@@ -377,6 +393,213 @@ String QueryPipelineUtil::explainPipeline(DB::QueryPipeline & pipeline)
     const auto & processors = pipeline.getProcessors();
     DB::printPipelineCompact(processors, buf, true);
     return buf.str();
+}
+
+using namespace DB;
+
+std::map<std::string, std::string> BackendInitializer::getBackendConfMap(const std::string &plan)
+{
+    std::map<std::string, std::string> ch_backend_conf;
+
+    /// Parse backend configs from plan extensions
+    do
+    {
+        auto plan_ptr = std::make_unique<substrait::Plan>();
+        auto success = plan_ptr->ParseFromString(plan);
+        if (!success)
+            break;
+
+        if (!plan_ptr->has_advanced_extensions() || !plan_ptr->advanced_extensions().has_enhancement())
+            break;
+        const auto & enhancement = plan_ptr->advanced_extensions().enhancement();
+
+        if (!enhancement.Is<substrait::Expression>())
+            break;
+
+        substrait::Expression expression;
+        if (!enhancement.UnpackTo(&expression) || !expression.has_literal() || !expression.literal().has_map())
+            break;
+
+        const auto & key_values = expression.literal().map().key_values();
+        for (const auto & key_value : key_values)
+        {
+             if (!key_value.has_key() || !key_value.has_value())
+                continue;
+
+            const auto & key = key_value.key();
+            const auto & value = key_value.value();
+            if (!key.has_string() || !value.has_string())
+                continue;
+
+            if (!key.string().starts_with(CH_BACKEND_CONF_PREFIX) && key.string() != std::string(GLUTEN_TIMEZONE_KEY))
+                continue;
+
+            ch_backend_conf[key.string()] = value.string();
+        }
+    } while (false);
+
+    if (!ch_backend_conf.count(CH_RUNTIME_CONF_FILE))
+    {
+        /// Try to get config path from environment variable
+        const char * config_path = std::getenv("CLICKHOUSE_BACKEND_CONFIG"); /// NOLINT
+        if (config_path)
+        {
+            ch_backend_conf[CH_RUNTIME_CONF_FILE] = config_path;
+        }
+    }
+    return ch_backend_conf;
+}
+
+void BackendInitializer::initBackendConfig(const std::string &plan)
+{
+    /// Parse input substrait plan, and get native conf map from it.
+    std::map<std::string, std::string> backend_conf_map;
+    backend_conf_map = getBackendConfMap(plan);
+
+    if (backend_conf_map.count(CH_RUNTIME_CONF_FILE))
+    {
+        if (fs::exists(CH_RUNTIME_CONF_FILE) && fs::is_regular_file(CH_RUNTIME_CONF_FILE))
+        {
+            ConfigProcessor config_processor(CH_RUNTIME_CONF_FILE, false, true);
+            config_processor.setConfigPath(fs::path(CH_RUNTIME_CONF_FILE).parent_path());
+            auto loaded_config = config_processor.loadConfig(false);
+            config = loaded_config.configuration;
+        }
+        else
+            throw DB::Exception(DB::ErrorCodes::BAD_ARGUMENTS, "{} is not a valid configure file.", CH_RUNTIME_CONF_FILE);
+    }
+    else
+        config = Poco::AutoPtr(new Poco::Util::MapConfiguration());
+
+    /// Update specified settings
+    for (const auto & kv : backend_conf_map)
+    {
+        if (kv.first.starts_with(CH_RUNTIME_CONF_PREFIX) && kv.first != CH_RUNTIME_CONF_FILE)
+            config->setString(kv.first.substr(CH_RUNTIME_CONF_PREFIX.size() + 1), kv.second);
+        else if (kv.first == std::string(GLUTEN_TIMEZONE_KEY))
+            config->setString(kv.first, kv.second);
+    }
+}
+
+void BackendInitializer::initBackendLoggers()
+{
+    auto level = config->getString("logger.level", "error");
+    if (config->has("logger.log"))
+        local_engine::Logger::initFileLogger(*config, "ClickHouseBackend");
+    else
+        local_engine::Logger::initConsoleLogger(level);
+
+    logger = &Poco::Logger::get("ClickHouseBackend");
+}
+
+void BackendInitializer::initBackendEnvs()
+{
+    /// Set environment variable TZ if possible
+    if (config->has(GLUTEN_TIMEZONE_KEY))
+    {
+        String timezone_name = config->getString(GLUTEN_TIMEZONE_KEY);
+        if (0 != setenv("TZ", timezone_name.data(), 1)) /// NOLINT
+            throw Poco::Exception("Cannot setenv TZ variable");
+
+        tzset();
+        DateLUT::setDefaultTimezone(timezone_name);
+    }
+
+    /// Set environment variable LIBHDFS3_CONF if possible
+    if (config->has(LIBHDFS3_CONF_KEY))
+    {
+        std::string libhdfs3_conf = config->getString(LIBHDFS3_CONF_KEY, "");
+        setenv("LIBHDFS3_CONF", libhdfs3_conf.c_str(), true); /// NOLINT
+    }
+}
+
+void BackendInitializer::initBackendSettings()
+{
+    static const std::string settings_path("local_engine.settings");
+
+    settings = Settings();
+    Poco::Util::AbstractConfiguration::Keys config_keys;
+    config->keys(settings_path, config_keys);
+
+    for (const std::string & key : config_keys)
+        settings.set(key, config->getString(settings_path + "." + key));
+    settings.set("join_use_nulls", true);
+}
+
+void BackendInitializer::initBackendContexts()
+{
+    /// Make sure global_context and shared_context are constructed only once.
+    auto & shared_context = SerializedPlanParser::shared_context;
+    if (!shared_context.get())
+    {
+        shared_context = SharedContextHolder(Context::createShared());
+    }
+
+    auto & global_context = SerializedPlanParser::global_context;
+    if (!global_context)
+    {
+        global_context = Context::createGlobal(shared_context.get());
+        global_context->makeGlobalContext();
+        global_context->setTemporaryStoragePath("/tmp/libch", 0);
+        global_context->setPath(config->getString("path", "/"));
+    }
+}
+
+void BackendInitializer::applyConfigAndSettings()
+{
+    auto & global_context = SerializedPlanParser::global_context;
+    global_context->setConfig(config);
+    global_context->setSettings(settings);
+}
+
+extern void registerAggregateFunctionCombinatorPartialMerge(AggregateFunctionCombinatorFactory &);
+extern void registerFunctions(FunctionFactory &);
+
+void registerAllFunctions()
+{
+    DB::registerFunctions();
+    DB::registerAggregateFunctions();
+
+    {
+        /// register aggregate function combinators from local_engine
+        auto & factory = AggregateFunctionCombinatorFactory::instance();
+        registerAggregateFunctionCombinatorPartialMerge(factory);
+    }
+
+    {
+        /// register ordinary functions from local_engine
+        auto & factory = FunctionFactory::instance();
+        registerFunctions(factory);
+    }
+}
+
+extern void registerAllFunctions();
+
+void BackendInitializer::registerAllFactories()
+{
+    registerReadBufferBuilders(ReadBufferBuilderFactory::instance());
+    LOG_INFO(logger, "Register read buffer builders.");
+
+    registerRelParsers(RelParserFactory::instance());
+    LOG_INFO(logger, "Register relation parsers.");
+
+    registerAllFunctions();
+    LOG_INFO(logger, "Register all functions.");
+}
+
+void BackendInitializer::initBackendCompiledExpressionCache()
+{
+    #if USE_EMBEDDED_COMPILER
+    /// 128 MB
+    constexpr size_t compiled_expression_cache_size_default = 1024 * 1024 * 128;
+    size_t compiled_expression_cache_size = config->getUInt64("compiled_expression_cache_size", compiled_expression_cache_size_default);
+
+    constexpr size_t compiled_expression_cache_elements_size_default = 10000;
+    size_t compiled_expression_cache_elements_size
+        = config->getUInt64("compiled_expression_cache_elements_size", compiled_expression_cache_elements_size_default);
+
+    CompiledExpressionCacheFactory::instance().init(compiled_expression_cache_size, compiled_expression_cache_elements_size);
+#endif
 }
 
 }
