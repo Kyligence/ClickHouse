@@ -10,6 +10,7 @@
 #include <Interpreters/Context.h>
 #include <Processors/Chunk.h>
 #include <Storages/IStorage.h>
+#include <Builder/BroadCastJoinBuilder.h>
 #include <base/types.h>
 
 namespace local_engine
@@ -84,40 +85,18 @@ public:
     static String explainPipeline(DB::QueryPipeline & pipeline);
 };
 
-class BackendInitializer
+
+class BackendFinalizerUtil;
+class BackendInitializerUtil
 {
 public:
-    static void init(const std::string & plan)
-    {
-        initBackendConfig(plan);
-        initBackendLoggers();
-
-        initBackendEnvs();
-        LOG_INFO(logger, "Init environment variables.");
-
-        initBackendSettings();
-        LOG_INFO(logger, "Init settings.");
-
-        initBackendContexts();
-        LOG_INFO(logger, "Init shared context and global context.");
-
-        applyConfigAndSettings();
-        LOG_INFO(logger, "Apply configuration and setting for global context.");
-
-        std::call_once(
-            init_flag,
-            [&]
-            {
-                registerAllFactories();
-                LOG_INFO(logger, "Register all factories.");
-
-                initBackendCompiledExpressionCache();
-                LOG_INFO(logger, "Init compiled expressions cache factory.");
-            });
-    }
-
+    /// Maybe invoked multiple times, followed by JNI_OnLoad
+    /// Allocate backend global resources(except JVM)
+    static void init(const std::string & plan);
 
 private:
+    friend class BackendFinalizerUtil;
+
     static void initBackendConfig(const std::string & plan);
     static void initBackendLoggers();
     static void initBackendEnvs();
@@ -142,6 +121,23 @@ private:
     inline static Poco::Logger * logger;
     inline static DB::Settings settings;
 };
+
+class BackendFinalizerUtil
+{
+public:
+    /// Maybe invoked multiple times, followed by JNI_OnUnload
+    /// Release backend global resources(except JVM)
+    static void finalize();
+
+private:
+    /// Only invoked before driver/executor process exit
+    static void onExit();
+
+    static void registerOnExitIfNeed();
+    inline static bool on_exit_registered = false;
+};
+
+
 
 
 }

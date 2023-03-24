@@ -167,15 +167,8 @@ void JNI_OnUnload(JavaVM * vm, void * /*reserved*/)
     env->DeleteGlobalRef(local_engine::NativeSplitter::iterator_class);
     env->DeleteGlobalRef(local_engine::WriteBufferFromJavaOutputStream::output_stream_class);
     env->DeleteGlobalRef(local_engine::ReservationListenerWrapper::reservation_listener_class);
-    /*
-    if (local_engine::SerializedPlanParser::global_context)
-    {
-        local_engine::SerializedPlanParser::global_context->shutdown();
-        local_engine::SerializedPlanParser::global_context.reset();
-        local_engine::SerializedPlanParser::shared_context.reset();
-    }
-    */
-    local_engine::BroadCastJoinBuilder::clean();
+
+    local_engine::BackendFinalizerUtil::finalize();
 }
 
 void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNative(JNIEnv * env, jobject, jbyteArray plan)
@@ -185,7 +178,7 @@ void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNa
     jbyte * plan_buf_addr = env->GetByteArrayElements(plan, nullptr);
     std::string plan_str;
     plan_str.assign(reinterpret_cast<const char *>(plan_buf_addr), plan_buf_size);
-    local_engine::BackendInitializer::init(plan_str);
+    local_engine::BackendInitializerUtil::init(plan_str);
     LOCAL_ENGINE_JNI_METHOD_END(env, )
 }
 

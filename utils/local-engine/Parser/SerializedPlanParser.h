@@ -7,9 +7,9 @@
 #include <Parser/CHColumnToSparkRow.h>
 #include <Processors/Executors/PullingPipelineExecutor.h>
 #include <Processors/Formats/Impl/CHColumnToArrowColumn.h>
-#include <Processors/QueryPlan/AggregatingStep.h>
 #include <Processors/QueryPlan/ISourceStep.h>
 #include <Processors/QueryPlan/QueryPlan.h>
+#include <Interpreters/Aggregator.h>
 #include <QueryPipeline/Pipe.h>
 #include <Storages/CustomStorageMergeTree.h>
 #include <Storages/IStorage.h>

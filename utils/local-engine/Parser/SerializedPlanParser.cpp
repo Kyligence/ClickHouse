@@ -35,6 +35,7 @@
 #include <Processors/Executors/PullingAsyncPipelineExecutor.h>
 #include <Processors/Formats/Impl/ArrowBlockOutputFormat.h>
 #include <Processors/Formats/Impl/ParquetBlockInputFormat.h>
+#include <Processors/QueryPlan/AggregatingStep.h>
 #include <Processors/QueryPlan/ExpressionStep.h>
 #include <Processors/QueryPlan/FilterStep.h>
 #include <Processors/QueryPlan/JoinStep.h>

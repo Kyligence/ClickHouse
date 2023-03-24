@@ -397,7 +397,7 @@ String QueryPipelineUtil::explainPipeline(DB::QueryPipeline & pipeline)
 
 using namespace DB;
 
-std::map<std::string, std::string> BackendInitializer::getBackendConfMap(const std::string &plan)
+std::map<std::string, std::string> BackendInitializerUtil::getBackendConfMap(const std::string &plan)
 {
     std::map<std::string, std::string> ch_backend_conf;
 
@@ -450,7 +450,7 @@ std::map<std::string, std::string> BackendInitializer::getBackendConfMap(const s
     return ch_backend_conf;
 }
 
-void BackendInitializer::initBackendConfig(const std::string &plan)
+void BackendInitializerUtil::initBackendConfig(const std::string &plan)
 {
     /// Parse input substrait plan, and get native conf map from it.
     std::map<std::string, std::string> backend_conf_map;
@@ -481,7 +481,7 @@ void BackendInitializer::initBackendConfig(const std::string &plan)
     }
 }
 
-void BackendInitializer::initBackendLoggers()
+void BackendInitializerUtil::initBackendLoggers()
 {
     auto level = config->getString("logger.level", "error");
     if (config->has("logger.log"))
@@ -492,7 +492,7 @@ void BackendInitializer::initBackendLoggers()
     logger = &Poco::Logger::get("ClickHouseBackend");
 }
 
-void BackendInitializer::initBackendEnvs()
+void BackendInitializerUtil::initBackendEnvs()
 {
     /// Set environment variable TZ if possible
     if (config->has(GLUTEN_TIMEZONE_KEY))
@@ -513,7 +513,7 @@ void BackendInitializer::initBackendEnvs()
     }
 }
 
-void BackendInitializer::initBackendSettings()
+void BackendInitializerUtil::initBackendSettings()
 {
     static const std::string settings_path("local_engine.settings");
 
@@ -526,7 +526,7 @@ void BackendInitializer::initBackendSettings()
     settings.set("join_use_nulls", true);
 }
 
-void BackendInitializer::initBackendContexts()
+void BackendInitializerUtil::initBackendContexts()
 {
     /// Make sure global_context and shared_context are constructed only once.
     auto & shared_context = SerializedPlanParser::shared_context;
@@ -545,7 +545,7 @@ void BackendInitializer::initBackendContexts()
     }
 }
 
-void BackendInitializer::applyConfigAndSettings()
+void BackendInitializerUtil::applyConfigAndSettings()
 {
     auto & global_context = SerializedPlanParser::global_context;
     global_context->setConfig(config);
@@ -575,7 +575,7 @@ void registerAllFunctions()
 
 extern void registerAllFunctions();
 
-void BackendInitializer::registerAllFactories()
+void BackendInitializerUtil::registerAllFactories()
 {
     registerReadBufferBuilders(ReadBufferBuilderFactory::instance());
     LOG_INFO(logger, "Register read buffer builders.");
@@ -587,7 +587,7 @@ void BackendInitializer::registerAllFactories()
     LOG_INFO(logger, "Register all functions.");
 }
 
-void BackendInitializer::initBackendCompiledExpressionCache()
+void BackendInitializerUtil::initBackendCompiledExpressionCache()
 {
     #if USE_EMBEDDED_COMPILER
     /// 128 MB
@@ -600,6 +600,70 @@ void BackendInitializer::initBackendCompiledExpressionCache()
 
     CompiledExpressionCacheFactory::instance().init(compiled_expression_cache_size, compiled_expression_cache_elements_size);
 #endif
+}
+
+void BackendInitializerUtil::init(const std::string & plan)
+{
+    initBackendConfig(plan);
+    initBackendLoggers();
+
+    initBackendEnvs();
+    LOG_INFO(logger, "Init environment variables.");
+
+    initBackendSettings();
+    LOG_INFO(logger, "Init settings.");
+
+    initBackendContexts();
+    LOG_INFO(logger, "Init shared context and global context.");
+
+    applyConfigAndSettings();
+    LOG_INFO(logger, "Apply configuration and setting for global context.");
+
+    std::call_once(
+        init_flag,
+        [&]
+        {
+            registerAllFactories();
+            LOG_INFO(logger, "Register all factories.");
+
+            initBackendCompiledExpressionCache();
+            LOG_INFO(logger, "Init compiled expressions cache factory.");
+        });
+}
+
+
+void BackendFinalizerUtil::finalize()
+{
+    BroadCastJoinBuilder::clean();
+    registerOnExitIfNeed();
+}
+
+void BackendFinalizerUtil::onExit()
+{
+    auto & global_context = SerializedPlanParser::global_context;
+    auto & shared_context = SerializedPlanParser::shared_context;
+    auto * logger = BackendInitializerUtil::logger;
+    if (global_context)
+    {
+        global_context->shutdown();
+        global_context.reset();
+        shared_context.reset();
+        LOG_INFO(logger, "Finalize shared context and global context.");
+    }
+}
+
+void BackendFinalizerUtil::registerOnExitIfNeed()
+{
+    /// No need to worry about concurrency issue.
+    /// Becuase gluten gurantees that JNI_OnUnload is called serially
+    if (!on_exit_registered)
+    {
+        std::atexit(BackendFinalizerUtil::onExit);
+        on_exit_registered = true;
+
+        auto * logger = BackendInitializerUtil::logger;
+        LOG_INFO(logger, "On Exit registered.");
+    }
 }
 
 }
