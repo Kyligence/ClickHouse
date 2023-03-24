@@ -450,7 +450,7 @@ std::map<std::string, std::string> BackendInitializerUtil::getBackendConfMap(con
     return ch_backend_conf;
 }
 
-void BackendInitializerUtil::initBackendConfig(const std::string &plan)
+void BackendInitializerUtil::initConfig(const std::string &plan)
 {
     /// Parse input substrait plan, and get native conf map from it.
     std::map<std::string, std::string> backend_conf_map;
@@ -481,7 +481,7 @@ void BackendInitializerUtil::initBackendConfig(const std::string &plan)
     }
 }
 
-void BackendInitializerUtil::initBackendLoggers()
+void BackendInitializerUtil::initLoggers()
 {
     auto level = config->getString("logger.level", "error");
     if (config->has("logger.log"))
@@ -492,7 +492,7 @@ void BackendInitializerUtil::initBackendLoggers()
     logger = &Poco::Logger::get("ClickHouseBackend");
 }
 
-void BackendInitializerUtil::initBackendEnvs()
+void BackendInitializerUtil::initEnvs()
 {
     /// Set environment variable TZ if possible
     if (config->has(GLUTEN_TIMEZONE_KEY))
@@ -513,7 +513,7 @@ void BackendInitializerUtil::initBackendEnvs()
     }
 }
 
-void BackendInitializerUtil::initBackendSettings()
+void BackendInitializerUtil::initSettings()
 {
     static const std::string settings_path("local_engine.settings");
 
@@ -526,7 +526,7 @@ void BackendInitializerUtil::initBackendSettings()
     settings.set("join_use_nulls", true);
 }
 
-void BackendInitializerUtil::initBackendContexts()
+void BackendInitializerUtil::initContexts()
 {
     /// Make sure global_context and shared_context are constructed only once.
     auto & shared_context = SerializedPlanParser::shared_context;
@@ -587,7 +587,7 @@ void BackendInitializerUtil::registerAllFactories()
     LOG_INFO(logger, "Register all functions.");
 }
 
-void BackendInitializerUtil::initBackendCompiledExpressionCache()
+void BackendInitializerUtil::initCompiledExpressionCache()
 {
     #if USE_EMBEDDED_COMPILER
     /// 128 MB
@@ -604,16 +604,16 @@ void BackendInitializerUtil::initBackendCompiledExpressionCache()
 
 void BackendInitializerUtil::init(const std::string & plan)
 {
-    initBackendConfig(plan);
-    initBackendLoggers();
+    initConfig(plan);
+    initLoggers();
 
-    initBackendEnvs();
+    initEnvs();
     LOG_INFO(logger, "Init environment variables.");
 
-    initBackendSettings();
+    initSettings();
     LOG_INFO(logger, "Init settings.");
 
-    initBackendContexts();
+    initContexts();
     LOG_INFO(logger, "Init shared context and global context.");
 
     applyConfigAndSettings();
@@ -626,7 +626,7 @@ void BackendInitializerUtil::init(const std::string & plan)
             registerAllFactories();
             LOG_INFO(logger, "Register all factories.");
 
-            initBackendCompiledExpressionCache();
+            initCompiledExpressionCache();
             LOG_INFO(logger, "Init compiled expressions cache factory.");
         });
 }

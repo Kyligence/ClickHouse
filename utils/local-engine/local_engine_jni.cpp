@@ -160,12 +160,13 @@ void JNI_OnUnload(JavaVM * vm, void * /*reserved*/)
     JNIEnv * env;
     vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8);
     local_engine::JniErrorsGlobalState::instance().destroy(env);
+    env->DeleteGlobalRef(spark_row_info_class);
     env->DeleteGlobalRef(split_result_class);
     env->DeleteGlobalRef(local_engine::ShuffleReader::input_stream_class);
-    env->DeleteGlobalRef(local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class);
-    env->DeleteGlobalRef(local_engine::SparkRowToCHColumn::spark_row_interator_class);
     env->DeleteGlobalRef(local_engine::NativeSplitter::iterator_class);
     env->DeleteGlobalRef(local_engine::WriteBufferFromJavaOutputStream::output_stream_class);
+    env->DeleteGlobalRef(local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class);
+    env->DeleteGlobalRef(local_engine::SparkRowToCHColumn::spark_row_interator_class);
     env->DeleteGlobalRef(local_engine::ReservationListenerWrapper::reservation_listener_class);
 
     local_engine::BackendFinalizerUtil::finalize();

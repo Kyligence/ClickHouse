@@ -97,14 +97,14 @@ public:
 private:
     friend class BackendFinalizerUtil;
 
-    static void initBackendConfig(const std::string & plan);
-    static void initBackendLoggers();
-    static void initBackendEnvs();
-    static void initBackendSettings();
-    static void initBackendContexts();
+    static void initConfig(const std::string & plan);
+    static void initLoggers();
+    static void initEnvs();
+    static void initSettings();
+    static void initContexts();
     static void applyConfigAndSettings();
     static void registerAllFactories();
-    static void initBackendCompiledExpressionCache();
+    static void initCompiledExpressionCache();
 
     static std::map<std::string, std::string> getBackendConfMap(const std::string & plan);
 
