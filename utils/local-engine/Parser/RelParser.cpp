@@ -130,8 +130,9 @@ void registerWindowRelParser(RelParserFactory & factory);
 void registerSortRelParser(RelParserFactory & factory);
 void registerExpandRelParser(RelParserFactory & factory);
 
-void registerRelParsers(RelParserFactory & factory)
+void registerRelParsers()
 {
+    auto & factory = RelParserFactory::instance();
     registerWindowRelParser(factory);
     registerSortRelParser(factory);
     registerExpandRelParser(factory);

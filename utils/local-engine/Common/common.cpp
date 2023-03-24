@@ -1,32 +1,9 @@
-#include <AggregateFunctions/registerAggregateFunctions.h>
-#include <AggregateFunctions/AggregateFunctionFactory.h>
-#include <AggregateFunctions/AggregateFunctionCombinatorFactory.h>
-#include <Functions/FunctionFactory.h>
-#include <Functions/registerFunctions.h>
 #include <Interpreters/Context.h>
-#include <Interpreters/JIT/CompiledExpressionCache.h>
 #include <Parser/SerializedPlanParser.h>
-#include <Processors/QueryPlan/Optimizations/QueryPlanOptimizationSettings.h>
-#include <Storages/SubstraitSource/ReadBufferBuilder.h>
-#include <Common/Config/ConfigProcessor.h>
-#include <Common/Logger.h>
-#include <Poco/SimpleFileChannel.h>
-#include <Poco/Util/MapConfiguration.h>
 
-#include <jni.h>
 #include <filesystem>
 
-namespace DB
-{
-
-namespace ErrorCodes
-{
-    extern const int BAD_ARGUMENTS;
-}
-}
-
 using namespace DB;
-namespace fs = std::filesystem;
 
 #ifdef __cplusplus
 extern "C" {

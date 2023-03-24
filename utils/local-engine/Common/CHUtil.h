@@ -137,7 +137,4 @@ private:
     inline static bool on_exit_registered = false;
 };
 
-
-
-
 }

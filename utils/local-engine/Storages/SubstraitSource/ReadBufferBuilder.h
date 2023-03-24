@@ -34,5 +34,5 @@ private:
     std::map<String, NewBuilder> builders;
 };
 
-void registerReadBufferBuilders(ReadBufferBuilderFactory & factory);
+void registerReadBufferBuilders();
 }

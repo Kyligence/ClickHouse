@@ -51,6 +51,7 @@ public:
     }
 };
 
+#if USE_HDFS
 class HDFSFileReadBufferBuilder : public ReadBufferBuilder
 {
 public:
@@ -72,6 +73,7 @@ public:
         return read_buffer;
     }
 };
+#endif
 
 #if USE_AWS_S3
 class S3FileReadBufferBuilder : public ReadBufferBuilder
@@ -158,11 +160,14 @@ private:
 };
 #endif
 
-void registerReadBufferBuilders(ReadBufferBuilderFactory & factory)
+void registerReadBufferBuilders()
 {
-    LOG_TRACE(&Poco::Logger::get("ReadBufferBuilderFactory"), "+registerReadBufferBuildes");
+    auto & factory = ReadBufferBuilderFactory::instance();
     factory.registerBuilder("file", [](DB::ContextPtr context_) { return std::make_shared<LocalFileReadBufferBuilder>(context_); });
+
+#if USE_HDFS
     factory.registerBuilder("hdfs", [](DB::ContextPtr context_) { return std::make_shared<HDFSFileReadBufferBuilder>(context_); });
+#endif
 
 #if USE_AWS_S3
     factory.registerBuilder("s3", [](DB::ContextPtr context_) { return std::make_shared<S3FileReadBufferBuilder>(context_); });

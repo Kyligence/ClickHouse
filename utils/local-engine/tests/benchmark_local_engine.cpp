@@ -1506,8 +1506,7 @@ int main(int argc, char ** argv)
     SerializedPlanParser::global_context = global_context;
     local_engine::SerializedPlanParser::initFunctionEnv();
 
-    auto & factory = local_engine::ReadBufferBuilderFactory::instance();
-    registerReadBufferBuilders(factory);
+    registerReadBufferBuilders();
 
     ::benchmark::Initialize(&argc, argv);
     if (::benchmark::ReportUnrecognizedArguments(argc, argv))

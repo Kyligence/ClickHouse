@@ -577,10 +577,10 @@ extern void registerAllFunctions();
 
 void BackendInitializerUtil::registerAllFactories()
 {
-    registerReadBufferBuilders(ReadBufferBuilderFactory::instance());
+    registerReadBufferBuilders();
     LOG_INFO(logger, "Register read buffer builders.");
 
-    registerRelParsers(RelParserFactory::instance());
+    registerRelParsers();
     LOG_INFO(logger, "Register relation parsers.");
 
     registerAllFunctions();
