@@ -483,7 +483,7 @@ void BackendInitializerUtil::initConfig(const std::string &plan)
 
 void BackendInitializerUtil::initLoggers()
 {
-    auto level = config->getString("logger.level", "error");
+    auto level = config->getString("logger.level", "information");
     if (config->has("logger.log"))
         local_engine::Logger::initFileLogger(*config, "ClickHouseBackend");
     else
@@ -635,7 +635,7 @@ void BackendInitializerUtil::init(const std::string & plan)
 void BackendFinalizerUtil::finalize()
 {
     BroadCastJoinBuilder::clean();
-    registerOnExitIfNeed();
+    registerOnExit();
 }
 
 void BackendFinalizerUtil::onExit()
@@ -648,21 +648,17 @@ void BackendFinalizerUtil::onExit()
         global_context->shutdown();
         global_context.reset();
         shared_context.reset();
-        LOG_INFO(logger, "Finalize shared context and global context.");
     }
 }
 
-void BackendFinalizerUtil::registerOnExitIfNeed()
+void BackendFinalizerUtil::registerOnExit()
 {
-    /// No need to worry about concurrency issue.
-    /// Becuase gluten gurantees that JNI_OnUnload is called serially
+    /// No need to worry about concurrency issue because gluten gurantees
+    /// that it is invoked serially.
     if (!on_exit_registered)
     {
         std::atexit(BackendFinalizerUtil::onExit);
         on_exit_registered = true;
-
-        auto * logger = BackendInitializerUtil::logger;
-        LOG_INFO(logger, "On Exit registered.");
     }
 }
 

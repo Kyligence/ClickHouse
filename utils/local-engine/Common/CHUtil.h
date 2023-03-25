@@ -87,6 +87,7 @@ public:
 
 
 class BackendFinalizerUtil;
+class JNIUtils;
 class BackendInitializerUtil
 {
 public:
@@ -96,6 +97,7 @@ public:
 
 private:
     friend class BackendFinalizerUtil;
+    friend class JNIUtils;
 
     static void initConfig(const std::string & plan);
     static void initLoggers();
@@ -133,7 +135,7 @@ private:
     /// Only invoked before driver/executor process exit
     static void onExit();
 
-    static void registerOnExitIfNeed();
+    static void registerOnExit();
     inline static bool on_exit_registered = false;
 };
 
