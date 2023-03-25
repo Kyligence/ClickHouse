@@ -72,17 +72,104 @@ namespace dbms
     class LocalExecutor;
 }
 
+static jclass spark_row_info_class;
+static jmethodID spark_row_info_constructor;
+
+static jclass split_result_class;
+static jmethodID split_result_constructor;
+
+/// Make sure JNI related initialization is executed only once when first loading libch.so
+static bool jni_inited = false;
+
+/// Make sure JNI related release is executed only once before process exit.
+static bool jni_finalize_registered = false;
+
 jint JNI_OnLoad(JavaVM * vm, void * /*reserved*/)
 {
-    std::cout << "jnionload" << std::endl;
-    // local_engine::JNIUtils::init(vm);
+    if (jni_inited)
+        return JNI_VERSION_1_8;
+
+    JNIEnv * env;
+    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8) != JNI_OK)
+        return JNI_ERR;
+
+    local_engine::JniErrorsGlobalState::instance().initialize(env);
+
+    spark_row_info_class = local_engine::CreateGlobalClassReference(env, "Lio/glutenproject/row/SparkRowInfo;");
+    spark_row_info_constructor = env->GetMethodID(spark_row_info_class, "<init>", "([J[JJJJ)V");
+
+    split_result_class = local_engine::CreateGlobalClassReference(env, "Lio/glutenproject/vectorized/SplitResult;");
+    split_result_constructor = local_engine::GetMethodID(env, split_result_class, "<init>", "(JJJJJJ[J[J)V");
+
+    local_engine::ShuffleReader::input_stream_class = local_engine::CreateGlobalClassReference(env, "Lio/glutenproject/vectorized/ShuffleInputStream;");
+    local_engine::NativeSplitter::iterator_class = local_engine::CreateGlobalClassReference(env, "Lio/glutenproject/vectorized/IteratorWrapper;");
+    local_engine::WriteBufferFromJavaOutputStream::output_stream_class = local_engine::CreateGlobalClassReference(env, "Ljava/io/OutputStream;");
+    local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class
+        = local_engine::CreateGlobalClassReference(env, "Lio/glutenproject/execution/ColumnarNativeIterator;");
+
+    local_engine::ShuffleReader::input_stream_read = env->GetMethodID(local_engine::ShuffleReader::input_stream_class, "read", "(JJ)J");
+
+    local_engine::NativeSplitter::iterator_has_next = local_engine::GetMethodID(env, local_engine::NativeSplitter::iterator_class, "hasNext", "()Z");
+    local_engine::NativeSplitter::iterator_next = local_engine::GetMethodID(env, local_engine::NativeSplitter::iterator_class, "next", "()J");
+
+    local_engine::WriteBufferFromJavaOutputStream::output_stream_write
+        = local_engine::GetMethodID(env, local_engine::WriteBufferFromJavaOutputStream::output_stream_class, "write", "([BII)V");
+    local_engine::WriteBufferFromJavaOutputStream::output_stream_flush
+        = local_engine::GetMethodID(env, local_engine::WriteBufferFromJavaOutputStream::output_stream_class, "flush", "()V");
+
+    local_engine::SourceFromJavaIter::serialized_record_batch_iterator_hasNext
+        = local_engine::GetMethodID(env, local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class, "hasNext", "()Z");
+    local_engine::SourceFromJavaIter::serialized_record_batch_iterator_next
+        = local_engine::GetMethodID(env, local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class, "next", "()[B");
+
+    local_engine::SparkRowToCHColumn::spark_row_interator_class
+        = local_engine::CreateGlobalClassReference(env, "Lio/glutenproject/execution/SparkRowIterator;");
+    local_engine::SparkRowToCHColumn::spark_row_interator_hasNext
+        = local_engine::GetMethodID(env, local_engine::SparkRowToCHColumn::spark_row_interator_class, "hasNext", "()Z");
+    local_engine::SparkRowToCHColumn::spark_row_interator_next
+        = local_engine::GetMethodID(env, local_engine::SparkRowToCHColumn::spark_row_interator_class, "next", "()[B");
+    local_engine::SparkRowToCHColumn::spark_row_iterator_nextBatch
+        = local_engine::GetMethodID(env, local_engine::SparkRowToCHColumn::spark_row_interator_class, "nextBatch", "()Ljava/nio/ByteBuffer;");
+
+    local_engine::ReservationListenerWrapper::reservation_listener_class
+        = local_engine::CreateGlobalClassReference(env, "Lio/glutenproject/memory/alloc/ReservationListener;");
+    local_engine::ReservationListenerWrapper::reservation_listener_reserve
+        = local_engine::GetMethodID(env, local_engine::ReservationListenerWrapper::reservation_listener_class, "reserve", "(J)J");
+    local_engine::ReservationListenerWrapper::reservation_listener_reserve_or_throw
+        = local_engine::GetMethodID(env, local_engine::ReservationListenerWrapper::reservation_listener_class, "reserveOrThrow", "(J)V");
+    local_engine::ReservationListenerWrapper::reservation_listener_unreserve
+        = local_engine::GetMethodID(env, local_engine::ReservationListenerWrapper::reservation_listener_class, "unreserve", "(J)J");
+
+    local_engine::JNIUtils::vm = vm;
+    return JNI_VERSION_1_8;
 }
 
 void JNI_OnUnload(JavaVM * /*vm*/, void * /*reserved*/)
 {
-    std::cout << "jnionunload" << std::endl;
-    // local_engine::JNIUtils::finalize();
-    // local_engine::BackendFinalizerUtil::finalize();
+    local_engine::BackendFinalizerUtil::finalize();
+
+    if (jni_finalize_registered)
+        return;
+
+    std::atexit(
+        []()
+        {
+            JNIEnv * env;
+            auto * vm = local_engine::JNIUtils::vm;
+            vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8);
+
+            local_engine::JniErrorsGlobalState::instance().destroy(env);
+
+            env->DeleteGlobalRef(spark_row_info_class);
+            env->DeleteGlobalRef(split_result_class);
+            env->DeleteGlobalRef(local_engine::ShuffleReader::input_stream_class);
+            env->DeleteGlobalRef(local_engine::NativeSplitter::iterator_class);
+            env->DeleteGlobalRef(local_engine::WriteBufferFromJavaOutputStream::output_stream_class);
+            env->DeleteGlobalRef(local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class);
+            env->DeleteGlobalRef(local_engine::SparkRowToCHColumn::spark_row_interator_class);
+            env->DeleteGlobalRef(local_engine::ReservationListenerWrapper::reservation_listener_class);
+        });
+    jni_finalize_registered = true;
 }
 
 void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNative(JNIEnv * env, jobject, jbyteArray plan)
@@ -159,8 +246,6 @@ jobject Java_io_glutenproject_row_RowIterator_nativeNext(JNIEnv * env, jobject /
     int64_t column_number = reinterpret_cast<int64_t>(spark_row_info->getNumCols());
     int64_t total_size = reinterpret_cast<int64_t>(spark_row_info->getTotalBytes());
 
-    auto & spark_row_info_class = local_engine::JNIUtils::spark_row_info_class;
-    auto & spark_row_info_constructor = local_engine::JNIUtils::spark_row_info_constructor;
     jobject spark_row_info_object
         = env->NewObject(spark_row_info_class, spark_row_info_constructor, offsets_arr, lengths_arr, address, column_number, total_size);
     return spark_row_info_object;
@@ -582,8 +667,6 @@ jobject Java_io_glutenproject_vectorized_CHShuffleSplitterJniWrapper_stop(JNIEnv
     const auto *raw_src = reinterpret_cast<const jlong *>(raw_partition_lengths.data());
     env->SetLongArrayRegion(raw_partition_length_arr, 0, raw_partition_lengths.size(), raw_src);
 
-    auto & split_result_class = local_engine::JNIUtils::split_result_class;
-    auto & split_result_constructor = local_engine::JNIUtils::split_result_constructor;
     jobject split_result = env->NewObject(
         split_result_class,
         split_result_constructor,
@@ -626,8 +709,6 @@ jobject Java_io_glutenproject_vectorized_BlockNativeConverter_convertColumnarToR
     int64_t column_number = reinterpret_cast<int64_t>(spark_row_info->getNumCols());
     int64_t total_size = reinterpret_cast<int64_t>(spark_row_info->getTotalBytes());
 
-    auto & spark_row_info_class = local_engine::JNIUtils::spark_row_info_class;
-    auto & spark_row_info_constructor = local_engine::JNIUtils::spark_row_info_constructor;
     jobject spark_row_info_object
         = env->NewObject(spark_row_info_class, spark_row_info_constructor, offsets_arr, lengths_arr, address, column_number, total_size);
 
