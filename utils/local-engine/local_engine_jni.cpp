@@ -151,7 +151,10 @@ void JNI_OnUnload(JavaVM * /*vm*/, void * /*reserved*/)
     if (jni_finalize_registered)
         return;
 
-    std::atexit(
+    /// Notice: the reason why we do not use std::exit is that JVM was already shutdown
+    /// when executing std::exit, which will cause coredump issue.
+    /// And std::at_quick_exit will be hooked before JVM shutdown.
+    std::at_quick_exit(
         []()
         {
             JNIEnv * env;
