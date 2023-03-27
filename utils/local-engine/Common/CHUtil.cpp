@@ -657,7 +657,7 @@ void BackendFinalizerUtil::registerOnExit()
     /// that it is invoked serially.
     if (!on_exit_registered)
     {
-        std::atexit(BackendFinalizerUtil::onExit);
+        std::at_quick_exit(BackendFinalizerUtil::onExit);
         on_exit_registered = true;
     }
 }
