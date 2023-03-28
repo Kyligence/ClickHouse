@@ -646,7 +646,9 @@ void BackendFinalizerUtil::finalizeGlobally()
 
 void BackendFinalizerUtil::finalizeSessionall()
 {
-    local_engine::BroadCastJoinBuilder::clean();
+    /// TODO: figure out why BroadCastJoinBuilder::clean would cause core issue
+    /// Currently remove it as a workaround
+    // local_engine::BroadCastJoinBuilder::clean();
 }
 
 }
