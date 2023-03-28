@@ -188,6 +188,7 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"get_json_object", "JSON_VALUE"},
     {"to_json", "toJSONString"},
     {"from_json", "JSONExtract"},
+    {"json_tuple", "json_tuple"}
 };
 
 static const std::set<std::string> FUNCTION_NEED_KEEP_ARGUMENTS = {"alias"};
