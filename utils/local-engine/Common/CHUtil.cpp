@@ -634,7 +634,7 @@ void BackendInitializerUtil::init(const std::string & plan)
 
 void BackendFinalizerUtil::finalize()
 {
-    BroadCastJoinBuilder::clean();
+    // BroadCastJoinBuilder::clean();
     registerOnExit();
 }
 
@@ -653,6 +653,7 @@ void BackendFinalizerUtil::onExit()
 
 void BackendFinalizerUtil::registerOnExit()
 {
+    /*
     /// No need to worry about concurrency issue because gluten gurantees
     /// that it is invoked serially.
     if (!on_exit_registered)
@@ -660,6 +661,8 @@ void BackendFinalizerUtil::registerOnExit()
         std::at_quick_exit(BackendFinalizerUtil::onExit);
         on_exit_registered = true;
     }
+    */
+    BackendFinalizerUtil::onExit();
 }
 
 }

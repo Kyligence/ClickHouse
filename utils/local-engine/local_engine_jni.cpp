@@ -144,32 +144,34 @@ jint JNI_OnLoad(JavaVM * vm, void * /*reserved*/)
     return JNI_VERSION_1_8;
 }
 
-void JNI_OnUnload(JavaVM * /*vm*/, void * /*reserved*/)
+void JNI_OnUnload(JavaVM * vm, void * /*reserved*/)
 {
     local_engine::BackendFinalizerUtil::finalize();
+    /*
     /// Notice: the reason why we do not register releasing JNI related resources on exiting is that
     /// it will cause core issue in gluten uts
-    /*
     if (jni_finalize_registered)
         return;
 
     std::at_quick_exit(
         []()
         {
-            JNIEnv * env;
-            auto * vm = local_engine::JNIUtils::vm;
-            vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8);
+    */
+    JNIEnv * env;
+    // auto * vm = local_engine::JNIUtils::vm;
+    vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8);
 
-            local_engine::JniErrorsGlobalState::instance().destroy(env);
+    local_engine::JniErrorsGlobalState::instance().destroy(env);
 
-            env->DeleteGlobalRef(spark_row_info_class);
-            env->DeleteGlobalRef(split_result_class);
-            env->DeleteGlobalRef(local_engine::ShuffleReader::input_stream_class);
-            env->DeleteGlobalRef(local_engine::NativeSplitter::iterator_class);
-            env->DeleteGlobalRef(local_engine::WriteBufferFromJavaOutputStream::output_stream_class);
-            env->DeleteGlobalRef(local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class);
-            env->DeleteGlobalRef(local_engine::SparkRowToCHColumn::spark_row_interator_class);
-            env->DeleteGlobalRef(local_engine::ReservationListenerWrapper::reservation_listener_class);
+    env->DeleteGlobalRef(spark_row_info_class);
+    env->DeleteGlobalRef(split_result_class);
+    env->DeleteGlobalRef(local_engine::ShuffleReader::input_stream_class);
+    env->DeleteGlobalRef(local_engine::NativeSplitter::iterator_class);
+    env->DeleteGlobalRef(local_engine::WriteBufferFromJavaOutputStream::output_stream_class);
+    env->DeleteGlobalRef(local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class);
+    env->DeleteGlobalRef(local_engine::SparkRowToCHColumn::spark_row_interator_class);
+    env->DeleteGlobalRef(local_engine::ReservationListenerWrapper::reservation_listener_class);
+    /*
         });
     jni_finalize_registered = true;
     */
@@ -185,6 +187,15 @@ void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNa
     local_engine::BackendInitializerUtil::init(plan_str);
     LOCAL_ENGINE_JNI_METHOD_END(env, )
 }
+
+void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeFinalizeNative(JNIEnv * env)
+{
+    LOCAL_ENGINE_JNI_METHOD_START
+    std::cout << "finalize native" << std::endl;
+    local_engine::BroadCastJoinBuilder::clean();
+    LOCAL_ENGINE_JNI_METHOD_END(env, )
+}
+
 
 jlong Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeCreateKernelWithRowIterator(
     JNIEnv * env, jobject /*obj*/, jbyteArray plan)
