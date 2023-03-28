@@ -2553,15 +2553,19 @@ void SerializedPlanParser::reorderJoinOutput(QueryPlan & plan, DB::Names cols)
     project_step->setStepDescription("Reorder Join Output");
     plan.addStep(std::move(project_step));
 }
+
 void SerializedPlanParser::removeNullable(std::vector<String> require_columns, ActionsDAGPtr actionsDag)
 {
     for (const auto & item : require_columns)
     {
-        auto function_builder = FunctionFactory::instance().get("assumeNotNull", context);
-        ActionsDAG::NodeRawConstPtrs args;
-        args.emplace_back(&actionsDag->findInOutputs(item));
-        const auto & node = actionsDag->addFunction(function_builder, args, item);
-        actionsDag->addOrReplaceInOutputs(node);
+        const auto * require_node = actionsDag->tryFindInOutputs(item);
+        if (require_node)
+        {
+            auto function_builder = FunctionFactory::instance().get("assumeNotNull", context);
+            ActionsDAG::NodeRawConstPtrs args = {require_node};
+            const auto & node = actionsDag->addFunction(function_builder, args, item);
+            actionsDag->addOrReplaceInOutputs(node);
+        }
     }
 }
 
