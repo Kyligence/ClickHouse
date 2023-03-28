@@ -78,17 +78,8 @@ static jmethodID spark_row_info_constructor;
 static jclass split_result_class;
 static jmethodID split_result_constructor;
 
-/// Make sure JNI related initialization is executed only once when first loading libch.so
-static bool jni_inited = false;
-
-/// Make sure JNI related release is executed only once before process exit.
-// static bool jni_finalize_registered = false;
-
 jint JNI_OnLoad(JavaVM * vm, void * /*reserved*/)
 {
-    if (jni_inited)
-        return JNI_VERSION_1_8;
-
     JNIEnv * env;
     if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8) != JNI_OK)
         return JNI_ERR;
@@ -146,19 +137,9 @@ jint JNI_OnLoad(JavaVM * vm, void * /*reserved*/)
 
 void JNI_OnUnload(JavaVM * vm, void * /*reserved*/)
 {
-    local_engine::BackendFinalizerUtil::finalize();
-    /*
-    /// Notice: the reason why we do not register releasing JNI related resources on exiting is that
-    /// it will cause core issue in gluten uts
-    if (jni_finalize_registered)
-        return;
+    local_engine::BackendFinalizerUtil::finalizeGlobally();
 
-    std::at_quick_exit(
-        []()
-        {
-    */
     JNIEnv * env;
-    // auto * vm = local_engine::JNIUtils::vm;
     vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_8);
 
     local_engine::JniErrorsGlobalState::instance().destroy(env);
@@ -171,10 +152,6 @@ void JNI_OnUnload(JavaVM * vm, void * /*reserved*/)
     env->DeleteGlobalRef(local_engine::SourceFromJavaIter::serialized_record_batch_iterator_class);
     env->DeleteGlobalRef(local_engine::SparkRowToCHColumn::spark_row_interator_class);
     env->DeleteGlobalRef(local_engine::ReservationListenerWrapper::reservation_listener_class);
-    /*
-        });
-    jni_finalize_registered = true;
-    */
 }
 
 void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNative(JNIEnv * env, jobject, jbyteArray plan)
@@ -191,8 +168,7 @@ void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeInitNa
 void Java_io_glutenproject_vectorized_ExpressionEvaluatorJniWrapper_nativeFinalizeNative(JNIEnv * env)
 {
     LOCAL_ENGINE_JNI_METHOD_START
-    std::cout << "finalize native" << std::endl;
-    local_engine::BroadCastJoinBuilder::clean();
+    local_engine::BackendFinalizerUtil::finalizeSessionall();
     LOCAL_ENGINE_JNI_METHOD_END(env, )
 }
 

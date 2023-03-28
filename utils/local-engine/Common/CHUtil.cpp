@@ -631,14 +631,7 @@ void BackendInitializerUtil::init(const std::string & plan)
         });
 }
 
-
-void BackendFinalizerUtil::finalize()
-{
-    // BroadCastJoinBuilder::clean();
-    registerOnExit();
-}
-
-void BackendFinalizerUtil::onExit()
+void BackendFinalizerUtil::finalizeGlobally()
 {
     auto & global_context = SerializedPlanParser::global_context;
     auto & shared_context = SerializedPlanParser::shared_context;
@@ -651,18 +644,9 @@ void BackendFinalizerUtil::onExit()
     }
 }
 
-void BackendFinalizerUtil::registerOnExit()
+void BackendFinalizerUtil::finalizeSessionall()
 {
-    /*
-    /// No need to worry about concurrency issue because gluten gurantees
-    /// that it is invoked serially.
-    if (!on_exit_registered)
-    {
-        std::at_quick_exit(BackendFinalizerUtil::onExit);
-        on_exit_registered = true;
-    }
-    */
-    BackendFinalizerUtil::onExit();
+    local_engine::BroadCastJoinBuilder::clean();
 }
 
 }

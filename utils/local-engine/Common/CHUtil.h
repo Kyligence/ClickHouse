@@ -91,8 +91,9 @@ class JNIUtils;
 class BackendInitializerUtil
 {
 public:
-    /// Maybe invoked multiple times, followed by JNI_OnLoad
-    /// Allocate backend global resources(except JVM)
+    /// Initialize two kinds of resources
+    /// 1. global level resources like global_context/shared_context, notice that they can only be initialized once in process lifetime
+    /// 2. session level resources like settings/configs, they can be initialized multiple times following the lifetime of executor/driver
     static void init(const std::string & plan);
 
 private:
@@ -127,16 +128,11 @@ private:
 class BackendFinalizerUtil
 {
 public:
-    /// Maybe invoked multiple times, followed by JNI_OnUnload
-    /// Release backend global resources(except JVM)
-    static void finalize();
+    /// Release global level resources like global_context/shared_context. Invoked only once in the lifetime of process when JVM is shuting down.
+    static void finalizeGlobally();
 
-private:
-    /// Only invoked before driver/executor process exit
-    static void onExit();
-
-    static void registerOnExit();
-    inline static bool on_exit_registered = false;
+    /// Release session level resources like StorageJoinBuilder. Invoked every time executor/driver shutdown.
+    static void finalizeSessionall();
 };
 
 }
