@@ -2188,9 +2188,19 @@ DB::QueryPlanPtr SerializedPlanParser::parseJoin(substrait::JoinRel join, DB::Qu
     }
     if (!right_table_alias.empty())
     {
-        ActionsDAGPtr project = std::make_shared<ActionsDAG>(right->getCurrentDataStream().header.getNamesAndTypesList());
-        project->addAliases(right_table_alias);
-        QueryPlanStepPtr project_step = std::make_unique<ExpressionStep>(right->getCurrentDataStream(), project);
+        ActionsDAGPtr rename_dag = std::make_shared<ActionsDAG>(right->getCurrentDataStream().header.getNamesAndTypesList());
+        auto original_right_columns = right->getCurrentDataStream().header;
+        for (const auto & column_alias : right_table_alias)
+        {
+            if (original_right_columns.has(column_alias.first))
+            {
+                auto pos = original_right_columns.getPositionByName(column_alias.first);
+                const auto & alias = rename_dag->addAlias(*rename_dag->getInputs()[pos], column_alias.second);
+                rename_dag->getOutputs()[pos] = &alias;
+            }
+        }
+        rename_dag->projectInput();
+        QueryPlanStepPtr project_step = std::make_unique<ExpressionStep>(right->getCurrentDataStream(), rename_dag);
         project_step->setStepDescription("Right Table Rename");
         right->addStep(std::move(project_step));
     }
