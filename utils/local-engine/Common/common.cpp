@@ -18,7 +18,7 @@ namespace DB
 {
 namespace ErrorCodes
 {
-extern const int BAD_ARGUMENTS;
+    extern const int BAD_ARGUMENTS;
 }
 }
 
@@ -58,6 +58,13 @@ static const String CH_RUNTIME_CONF_PREFIX = CH_BACKEND_CONF_PREFIX + "." + CH_R
 static const String CH_RUNTIME_CONF_FILE = CH_RUNTIME_CONF_PREFIX + ".conf_file";
 static const String GLUTEN_TIMEZONE_KEY = "spark.gluten.timezone";
 static const String LIBHDFS3_CONF_KEY = "hdfs.libhdfs3_conf";
+static const std::string SPARK_S3_ACCESS_KEY = "spark.hadoop.fs.s3a.access.key";
+static const std::string SPARK_S3_SECRET_KEY = "spark.hadoop.fs.s3a.secret.key";
+static const std::string SPARK_S3_ENDPOINT = "spark.hadoop.fs.s3a.endpoint";
+static const std::map<std::string, std::string> S3_CONFIGS
+    = {{SPARK_S3_ACCESS_KEY, "s3.access_key_id"},
+       {SPARK_S3_SECRET_KEY, "s3.secret_access_key"},
+       {SPARK_S3_ENDPOINT, "s3.endpoint"}};
 
 /// For using gluten, we recommend to pass clickhouse runtime configure by using --files in spark-submit.
 /// And set the parameter CH_BACKEND_CONF_PREFIX.CH_RUNTIME_CONF.conf_file
@@ -89,15 +96,12 @@ static std::map<std::string, std::string> getBackendConf(const std::string & pla
         const auto & key_values = expression.literal().map().key_values();
         for (const auto & key_value : key_values)
         {
-             if (!key_value.has_key() || !key_value.has_value())
+            if (!key_value.has_key() || !key_value.has_value())
                 continue;
 
             const auto & key = key_value.key();
             const auto & value = key_value.value();
             if (!key.has_string() || !value.has_string())
-                continue;
-
-            if (!key.string().starts_with(CH_BACKEND_CONF_PREFIX) && key.string() != std::string(GLUTEN_TIMEZONE_KEY))
                 continue;
 
             ch_backend_conf[key.string()] = value.string();
@@ -117,7 +121,8 @@ static std::map<std::string, std::string> getBackendConf(const std::string & pla
 }
 
 void initCHRuntimeConfig(const std::map<std::string, std::string> & conf)
-{}
+{
+}
 
 void init(const std::string & plan)
 {
@@ -161,9 +166,13 @@ void init(const std::string & plan)
                         local_engine::SerializedPlanParser::config->setString(
                             kv.first.substr(CH_RUNTIME_CONF_PREFIX.size() + 1), kv.second);
                     }
-                    else if (kv.first == std::string(GLUTEN_TIMEZONE_KEY))
+                    else if (kv.first == GLUTEN_TIMEZONE_KEY)
                     {
                         local_engine::SerializedPlanParser::config->setString(kv.first, kv.second);
+                    }
+                    else if (S3_CONFIGS.find(kv.first) != S3_CONFIGS.end())
+                    {
+                        local_engine::SerializedPlanParser::config->setString(S3_CONFIGS.at(kv.first), kv.second);
                     }
                 }
             }
@@ -232,10 +241,12 @@ void init(const std::string & plan)
 #if USE_EMBEDDED_COMPILER
             /// 128 MB
             constexpr size_t compiled_expression_cache_size_default = 1024 * 1024 * 128;
-            size_t compiled_expression_cache_size = config->getUInt64("compiled_expression_cache_size", compiled_expression_cache_size_default);
+            size_t compiled_expression_cache_size
+                = config->getUInt64("compiled_expression_cache_size", compiled_expression_cache_size_default);
 
             constexpr size_t compiled_expression_cache_elements_size_default = 10000;
-            size_t compiled_expression_cache_elements_size = config->getUInt64("compiled_expression_cache_elements_size", compiled_expression_cache_elements_size_default);
+            size_t compiled_expression_cache_elements_size
+                = config->getUInt64("compiled_expression_cache_elements_size", compiled_expression_cache_elements_size_default);
 
             CompiledExpressionCacheFactory::instance().init(compiled_expression_cache_size, compiled_expression_cache_elements_size);
             LOG_INFO(logger, "Init compiled expressions cache factory.");
@@ -258,7 +269,7 @@ char * createExecutor(const std::string & plan_string)
     auto query_plan = parser.parse(plan_string);
     local_engine::LocalExecutor * executor = new local_engine::LocalExecutor(parser.query_context);
     executor->execute(std::move(query_plan));
-    return reinterpret_cast<char* >(executor);
+    return reinterpret_cast<char *>(executor);
 }
 
 bool executorHasNext(char * executor_address)

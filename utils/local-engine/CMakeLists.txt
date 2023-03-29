@@ -52,11 +52,14 @@ add_library(${LOCALENGINE_SHARED_LIB} SHARED
         ${operator_sources}
         ${aggregate_functions_sources}
         ${functions_sources}
-        local_engine_jni.cpp)
+        local_engine_jni.cpp $<TARGET_OBJECTS:clickhouse_malloc>)
+# why add clickhouse_malloc? check clickhouse PR-8046
 
 
 target_compile_options(${LOCALENGINE_SHARED_LIB} PUBLIC -fPIC
         -Wno-shorten-64-to-32)
+
+target_link_libraries (${LOCALENGINE_SHARED_LIB} PRIVATE clickhouse_new_delete _jemalloc ${MALLOC_LIBRARIES})
 
 target_link_libraries(${LOCALENGINE_SHARED_LIB} PUBLIC
         clickhouse_aggregate_functions

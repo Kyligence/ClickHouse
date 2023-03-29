@@ -19,7 +19,9 @@ configure_file(
 )
 set(HAVE_POSIX_REGEX 1)
 include(FetchContent)
-FetchContent_Declare(googlebenchmark GIT_REPOSITORY https://github.com/google/benchmark GIT_TAG main)
+#FetchContent_Declare(googlebenchmark GIT_REPOSITORY https://github.com/google/benchmark GIT_TAG main)
+FetchContent_Declare(googlebenchmark
+        URL https://github.com/google/benchmark/archive/refs/tags/v1.7.1.tar.gz)
 FetchContent_MakeAvailable(googlebenchmark)
 include_directories(
         ${builder_headers}
