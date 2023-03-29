@@ -1268,8 +1268,8 @@ SerializedPlanParser::getFunctionName(const std::string & function_signature, co
     }
     else if (function_name == "check_overflow")
     {
-        if (args.size() != 2)
-            throw Exception(ErrorCodes::BAD_ARGUMENTS, "check_overflow function requires two args.");
+        if (args.size() < 2)
+            throw Exception(ErrorCodes::BAD_ARGUMENTS, "check_overflow function requires at least two args.");
         ch_function_name = getDecimalFunction(output_type.decimal(), args.at(1).value().literal().boolean());
     }
     else
@@ -1423,8 +1423,11 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
 
         if (function_signature.find("check_overflow:", 0) != function_signature.npos)
         {
-            if (scalar_function.arguments().size() != 2)
-                throw Exception(ErrorCodes::BAD_ARGUMENTS, "check_overflow function requires two args.");
+            if (scalar_function.arguments().size() < 2)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "check_overflow function requires at least two args.");
+
+            ActionsDAG::NodeRawConstPtrs new_args;
+            new_args.reserve(2);
 
             // if toDecimalxxOrNull, first arg need string type
             if (scalar_function.arguments().at(1).value().literal().boolean())
@@ -1437,15 +1440,19 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
                 join(to_string_args, ',', to_string_cast_args_name);
                 result_name = check_overflow_args_trans_function + "(" + to_string_cast_args_name + ")";
                 const auto * to_string_cast_node = &actions_dag->addFunction(to_string_cast, to_string_args, result_name);
-                args[0] = to_string_cast_node;
+                new_args.emplace_back(to_string_cast_node);
+            }
+            else
+            {
+                new_args.emplace_back(args[0]);
             }
 
-            // delete the latest arg
-            args.pop_back();
             auto type = std::make_shared<DataTypeUInt32>();
             UInt32 scale = rel.scalar_function().output_type().decimal().scale();
-            args.emplace_back(
+            new_args.emplace_back(
                 &actions_dag->addColumn(ColumnWithTypeAndName(type->createColumnConst(1, scale), type, getUniqueName(toString(scale)))));
+
+            args = std::move(new_args);
         }
 
         auto function_builder = FunctionFactory::instance().get(function_name, context);
