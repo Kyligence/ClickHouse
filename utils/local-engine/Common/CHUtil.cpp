@@ -524,6 +524,10 @@ void BackendInitializerUtil::initSettings()
     for (const std::string & key : config_keys)
         settings.set(key, config->getString(settings_path + "." + key));
     settings.set("join_use_nulls", true);
+    settings.set("input_format_orc_allow_missing_columns", true);
+    settings.set("input_format_orc_case_insensitive_column_matching", true);
+    settings.set("input_format_parquet_allow_missing_columns", true);
+    settings.set("input_format_parquet_case_insensitive_column_matching", true);
 }
 
 void BackendInitializerUtil::initContexts()

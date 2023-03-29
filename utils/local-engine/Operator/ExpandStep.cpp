@@ -69,7 +69,7 @@ DB::Block ExpandStep::buildOutputHeader(
             cols.push_back(old_col);
         else
         {
-            auto null_map = DB::ColumnInt8::create(0, 0);
+            auto null_map = DB::ColumnUInt8::create(0, 0);
             auto null_col = DB::ColumnNullable::create(old_col.column, std::move(null_map));
             auto null_type = std::make_shared<DB::DataTypeNullable>(old_col.type);
             cols.push_back(DB::ColumnWithTypeAndName(null_col, null_type, old_col.name));
