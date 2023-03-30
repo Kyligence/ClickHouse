@@ -11,6 +11,7 @@
 #include <Processors/QueryPlan/JoinStep.h>
 #include <Processors/QueryPlan/ExpressionStep.h>
 #include <Processors/QueryPlan/Optimizations/QueryPlanOptimizationSettings.h>
+#include <QueryPipeline/QueryPipelineBuilder.h>
 #include <Parsers/ASTIdentifier.h>
 #include <Storages/StorageJoinFromReadBuffer.h>
 
@@ -69,8 +70,8 @@ TEST(TestJoin, simple)
     right_plan.addStep(std::make_unique<ReadFromPreparedSource>(Pipe(right_table)));
 
     auto join = std::make_shared<TableJoin>(global_context->getSettings(), global_context->getTemporaryVolume());
-    join->setKind(ASTTableJoin::Kind::Left);
-    join->setStrictness(ASTTableJoin::Strictness::All);
+    join->setKind(JoinKind::Left);
+    join->setStrictness(JoinStrictness::All);
     join->setColumnsFromJoinedTable(right.getNamesAndTypesList());
     join->addDisjunct();
     ASTPtr lkey = std::make_shared<ASTIdentifier>("colA");
@@ -111,7 +112,7 @@ TEST(TestJoin, simple)
         left_plan.getCurrentDataStream(),
         right_plan.getCurrentDataStream(),
         hash_join,
-        8192);
+        8192, 1, false);
 
     std::cerr<< "join step:" <<join_step->getOutputStream().header.dumpStructure() << std::endl;
 
@@ -180,7 +181,18 @@ TEST(TestJoin, StorageJoinFromReadBufferTest)
     auto in = std::make_unique<ReadBufferFromString>(buf);
     auto metadata = local_engine::buildMetaData(right.getNamesAndTypesList(), global_context);
 
-    auto join_storage = std::shared_ptr<StorageJoinFromReadBuffer>(new StorageJoinFromReadBuffer(std::move(in), StorageID("default", "test"), {"colD"}, false, SizeLimits(), ASTTableJoin::Kind::Left, ASTTableJoin::Strictness::All, ColumnsDescription(right.getNamesAndTypesList()), ConstraintsDescription(), "test", true));
+    auto join_storage = std::shared_ptr<StorageJoinFromReadBuffer>(new StorageJoinFromReadBuffer(
+        std::move(in),
+        StorageID("default", "test"),
+        {"colD"},
+        false,
+        {},
+        JoinKind::Left,
+        JoinStrictness::All,
+        ColumnsDescription(right.getNamesAndTypesList()),
+        {},
+        "test",
+        true));
     auto storage_snapshot = std::make_shared<StorageSnapshot>(*join_storage, metadata);
     auto left_table = std::make_shared<SourceFromSingleChunk>(left);
     SelectQueryInfo query_info;
@@ -188,7 +200,7 @@ TEST(TestJoin, StorageJoinFromReadBufferTest)
     QueryPlan left_plan;
     left_plan.addStep(std::make_unique<ReadFromPreparedSource>(Pipe(left_table)));
 
-    auto join = std::make_shared<TableJoin>(SizeLimits(), false, ASTTableJoin::Kind::Left, ASTTableJoin::Strictness::All, right.getNames());
+    auto join = std::make_shared<TableJoin>(SizeLimits(), false, JoinKind::Left, JoinStrictness::All, right.getNames());
     auto required_rkey = NameAndTypePair("colD", int_type);
     join->addJoinedColumn(required_rkey);
     join->addJoinedColumn(NameAndTypePair("colC", int_type));

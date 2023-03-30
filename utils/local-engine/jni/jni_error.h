@@ -8,6 +8,7 @@
 #include <IO/WriteBufferFromString.h>
 #include <jni/jni_common.h>
 #include <boost/stacktrace.hpp>
+
 #include <sstream>
 namespace local_engine
 {

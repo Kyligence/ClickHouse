@@ -51,6 +51,7 @@ public:
     }
 };
 
+#if USE_HDFS
 class HDFSFileReadBufferBuilder : public ReadBufferBuilder
 {
 public:
@@ -61,21 +62,18 @@ public:
     {
         Poco::URI file_uri(file_info.uri_file());
         std::unique_ptr<DB::ReadBuffer> read_buffer;
-        /// Need to set "hdfs.libhdfs3_conf" in global settings
-        if (context->getConfigRef().getString("hdfs.libhdfs3_conf", "").empty())
-        {
-            throw DB::Exception(DB::ErrorCodes::BAD_ARGUMENTS, "Not found hdfs.libhdfs3_conf");
-        }
-        std::string uriPath = "hdfs://" + file_uri.getHost();
+
+        std::string uri_path = "hdfs://" + file_uri.getHost();
         if (file_uri.getPort())
-            uriPath += ":" + std::to_string(file_uri.getPort());
+            uri_path += ":" + std::to_string(file_uri.getPort());
         DB::ReadSettings read_settings;
         read_buffer = std::make_unique<DB::ReadBufferFromHDFS>(
-            uriPath, file_uri.getPath(), context->getGlobalContext()->getConfigRef(),
+            uri_path, file_uri.getPath(), context->getGlobalContext()->getConfigRef(),
             read_settings);
         return read_buffer;
     }
 };
+#endif
 
 #if USE_AWS_S3
 class S3FileReadBufferBuilder : public ReadBufferBuilder
@@ -162,11 +160,14 @@ private:
 };
 #endif
 
-void registerReadBufferBuildes(ReadBufferBuilderFactory & factory)
+void registerReadBufferBuilders()
 {
-    LOG_TRACE(&Poco::Logger::get("ReadBufferBuilderFactory"), "+registerReadBufferBuildes");
+    auto & factory = ReadBufferBuilderFactory::instance();
     factory.registerBuilder("file", [](DB::ContextPtr context_) { return std::make_shared<LocalFileReadBufferBuilder>(context_); });
+
+#if USE_HDFS
     factory.registerBuilder("hdfs", [](DB::ContextPtr context_) { return std::make_shared<HDFSFileReadBufferBuilder>(context_); });
+#endif
 
 #if USE_AWS_S3
     factory.registerBuilder("s3", [](DB::ContextPtr context_) { return std::make_shared<S3FileReadBufferBuilder>(context_); });

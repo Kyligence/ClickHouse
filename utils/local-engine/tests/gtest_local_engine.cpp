@@ -22,6 +22,7 @@
 #include <Storages/MergeTree/MergeTreeSettings.h>
 #include <Storages/SelectQueryInfo.h>
 #include <Storages/CustomStorageMergeTree.h>
+#include <QueryPipeline/QueryPipelineBuilder.h>
 #include <gtest/gtest.h>
 #include <substrait/plan.pb.h>
 #include "testConfig.h"
@@ -85,7 +86,6 @@ TEST(TestSelect, ReadDate)
     }
 }
 
-bool inside_main = true;
 TEST(TestSelect, TestFilter)
 {
     dbms::SerializedSchemaBuilder schema_builder;
@@ -272,8 +272,6 @@ TEST(TestSimpleAgg, TestGenerate)
     local_executor.execute(std::move(query_plan));
     while (local_executor.hasNext())
     {
-        //local_engine::SparkRowInfoPtr spark_row_info = local_executor.next();
-
         auto block = local_executor.nextColumnar();
         debug::headBlock(*block);
     }
@@ -368,8 +366,7 @@ int main(int argc, char ** argv)
     local_engine::SerializedPlanParser::global_context->setPath("/tmp");
     local_engine::SerializedPlanParser::global_context->getDisksMap().emplace();
     local_engine::SerializedPlanParser::initFunctionEnv();
-    auto & factory = local_engine::ReadBufferBuilderFactory::instance();
-    registerReadBufferBuildes(factory);
+    registerReadBufferBuilders();
 
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

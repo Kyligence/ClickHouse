@@ -2,6 +2,7 @@
 #include <Parser/SerializedPlanParser.h>
 #include <Poco/StringTokenizer.h>
 #include <Common/ThreadPool.h>
+#include <Common/JNIUtils.h>
 
 namespace DB
 {
@@ -77,6 +78,14 @@ void BroadCastJoinBuilder::buildJoinIfNotExist(
             ThreadFromGlobalPool build_thread(std::move(func));
             build_thread.join();
         }
+    }
+    else
+    {
+        GET_JNIENV(env)
+        // it needs to delete global ref of the input object, otherwise it will hold the input object
+        // and lead to memory leak.
+        env->DeleteGlobalRef(input);
+        CLEAN_JNIENV
     }
 }
 std::shared_ptr<StorageJoinFromReadBuffer> BroadCastJoinBuilder::getJoin(const std::string & key)

@@ -4,11 +4,15 @@
 #include <Core/Block.h>
 #include <Core/ColumnWithTypeAndName.h>
 #include <Core/NamesAndTypes.h>
+#include <Common/logger_useful.h>
 #include <DataTypes/Serializations/ISerialization.h>
 #include <Interpreters/ActionsDAG.h>
+#include <Interpreters/Context.h>
 #include <Processors/Chunk.h>
 #include <Storages/IStorage.h>
+#include <Builder/BroadCastJoinBuilder.h>
 #include <base/types.h>
+
 namespace local_engine
 {
 
@@ -73,6 +77,62 @@ public:
         const DB::ActionsDAG::Node * node,
         const std::string & type_name,
         const std::string & result_name = "");
+};
+
+class QueryPipelineUtil
+{
+public:
+    static String explainPipeline(DB::QueryPipeline & pipeline);
+};
+
+
+class BackendFinalizerUtil;
+class JNIUtils;
+class BackendInitializerUtil
+{
+public:
+    /// Initialize two kinds of resources
+    /// 1. global level resources like global_context/shared_context, notice that they can only be initialized once in process lifetime
+    /// 2. session level resources like settings/configs, they can be initialized multiple times following the lifetime of executor/driver
+    static void init(const std::string & plan);
+
+private:
+    friend class BackendFinalizerUtil;
+    friend class JNIUtils;
+
+    static void initConfig(const std::string & plan);
+    static void initLoggers();
+    static void initEnvs();
+    static void initSettings();
+    static void initContexts();
+    static void applyConfigAndSettings();
+    static void registerAllFactories();
+    static void initCompiledExpressionCache();
+
+    static std::map<std::string, std::string> getBackendConfMap(const std::string & plan);
+
+    inline static const String CH_BACKEND_CONF_PREFIX = "spark.gluten.sql.columnar.backend.ch";
+    inline static const String CH_RUNTIME_CONF = "runtime_conf";
+    inline static const String CH_RUNTIME_CONF_PREFIX = CH_BACKEND_CONF_PREFIX + "." + CH_RUNTIME_CONF;
+    inline static const String CH_RUNTIME_CONF_FILE = CH_RUNTIME_CONF_PREFIX + ".conf_file";
+    inline static const String GLUTEN_TIMEZONE_KEY = "spark.gluten.timezone";
+    inline static const String LIBHDFS3_CONF_KEY = "hdfs.libhdfs3_conf";
+    inline static const String SETTINGs_PATH = "local_engine.settings";
+
+    inline static std::once_flag init_flag;
+    inline static DB::Context::ConfigurationPtr config;
+    inline static Poco::Logger * logger;
+    inline static DB::Settings settings;
+};
+
+class BackendFinalizerUtil
+{
+public:
+    /// Release global level resources like global_context/shared_context. Invoked only once in the lifetime of process when JVM is shuting down.
+    static void finalizeGlobally();
+
+    /// Release session level resources like StorageJoinBuilder. Invoked every time executor/driver shutdown.
+    static void finalizeSessionall();
 };
 
 }

@@ -1,10 +1,14 @@
 #include "WindowRelParser.h"
 #include <exception>
 #include <memory>
+#include <valarray>
 #include <Core/Block.h>
 #include <Core/ColumnWithTypeAndName.h>
 #include <Core/ColumnsWithTypeAndName.h>
+#include <Core/Names.h>
 #include <Core/SortDescription.h>
+#include <DataTypes/IDataType.h>
+#include <Functions/FunctionFactory.h>
 #include <IO/WriteBufferFromString.h>
 #include <Interpreters/WindowDescription.h>
 #include <Parser/RelParser.h>
@@ -13,10 +17,12 @@
 #include <Processors/QueryPlan/WindowStep.h>
 #include <Common/logger_useful.h>
 #include <base/sort.h>
+#include <base/types.h>
 #include <google/protobuf/util/json_util.h>
+#include <Common/CHUtil.h>
 #include <Common/Exception.h>
-#include <Core/Names.h>
-#include <Functions/FunctionFactory.h>
+#include <Interpreters/ActionsDAG.h>
+#include <DataTypes/DataTypesNumber.h>
 
 namespace DB
 {
@@ -77,42 +83,44 @@ WindowRelParser::parse(DB::QueryPlanPtr current_plan_, const substrait::Rel & re
         current_plan->addStep(std::move(convert_step));
     }
 
-    // lead/lag may have default value for null
-    projectLeadLagDefaultValue(*current_plan, win_rel_pb);
-
     return std::move(current_plan);
+}
+DB::WindowDescription
+WindowRelParser::parseWindowDescrption(const substrait::WindowRel & win_rel, const substrait::Expression::WindowFunction & win_function)
+{
+    DB::WindowDescription win_descr;
+    win_descr.frame = parseWindowFrame(win_function);
+    win_descr.partition_by = parsePartitionBy(win_rel.partition_expressions());
+    win_descr.order_by = SortRelParser::parseSortDescription(win_rel.sorts(), current_plan->getCurrentDataStream().header);
+    win_descr.full_sort_description = win_descr.partition_by;
+    win_descr.full_sort_description.insert(win_descr.full_sort_description.end(), win_descr.order_by.begin(), win_descr.order_by.end());
+
+    DB::WriteBufferFromOwnString ss;
+    ss << "partition by " << DB::dumpSortDescription(win_descr.partition_by);
+    ss << " order by " << DB::dumpSortDescription(win_descr.order_by);
+    ss << " " << win_descr.frame.toString();
+    win_descr.window_name = ss.str();
+    return win_descr;
 }
 
 std::unordered_map<DB::String, WindowDescription> WindowRelParser::parseWindowDescriptions(const substrait::WindowRel & win_rel)
 {
     std::unordered_map<DB::String, WindowDescription> window_descriptions;
-
     for (int i = 0; i < win_rel.measures_size(); ++i)
     {
         const auto & measure = win_rel.measures(i);
-        const auto win_func_pb = measure.measure();
-        auto window_name = getWindowName(win_rel, win_func_pb);
-        auto win_it = window_descriptions.find(window_name);
+        const auto & win_function = measure.measure();
+        auto win_descr = parseWindowDescrption(win_rel, win_function);
         WindowDescription * description = nullptr;
-        if (win_it == window_descriptions.end())
-        {
-            WindowDescription new_result;
-            window_descriptions[window_name] = new_result;
-            description = &window_descriptions[window_name];
-            description->window_name = window_name;
-            description->frame = parseWindowFrame(win_func_pb);
-            description->partition_by = parsePartitionBy(win_rel.partition_expressions());
-            description->order_by = SortRelParser::parseSortDescription(win_rel.sorts(), current_plan->getCurrentDataStream().header);
-            description->full_sort_description = description->partition_by;
-            description->full_sort_description.insert(
-                description->full_sort_description.end(), description->order_by.begin(), description->order_by.end());
-        }
+        const auto win_it = window_descriptions.find(win_descr.window_name);
+        if (win_it != window_descriptions.end())
+            description = &win_it->second;
         else
         {
-            description = &win_it->second;
+            window_descriptions[win_descr.window_name] = win_descr;
+            description = &window_descriptions[win_descr.window_name];
         }
-
-        auto win_func = parseWindowFunctionDescription(win_rel, win_func_pb, measures_arg_names[i]);
+        auto win_func = parseWindowFunctionDescription(win_rel, win_function, measures_arg_names[i], measures_arg_types[i]);
         description->window_functions.emplace_back(win_func);
     }
     return window_descriptions;
@@ -120,39 +128,58 @@ std::unordered_map<DB::String, WindowDescription> WindowRelParser::parseWindowDe
 
 DB::WindowFrame WindowRelParser::parseWindowFrame(const substrait::Expression::WindowFunction & window_function)
 {
+    auto function_name = parseFunctionName(window_function.function_reference());
+    if (!function_name)
+        function_name = "";
     DB::WindowFrame win_frame;
-    win_frame.type = parseWindowFrameType(window_function);
-    parseBoundType(window_function.lower_bound(), true, win_frame.begin_type, win_frame.begin_offset, win_frame.begin_preceding);
-    parseBoundType(window_function.upper_bound(), false, win_frame.end_type, win_frame.end_offset, win_frame.end_preceding);
+    win_frame.type = parseWindowFrameType(*function_name, window_function);
+    parseBoundType(
+        *function_name, window_function.lower_bound(), true, win_frame.begin_type, win_frame.begin_offset, win_frame.begin_preceding);
+    parseBoundType(*function_name, window_function.upper_bound(), false, win_frame.end_type, win_frame.end_offset, win_frame.end_preceding);
+
+    // special cases
+    if (*function_name == "lead" || *function_name == "lag")
+    {
+        win_frame.begin_preceding = true;
+        win_frame.end_preceding = false;
+    }
     return win_frame;
 }
 
-DB::WindowFrame::FrameType WindowRelParser::parseWindowFrameType(const substrait::Expression::WindowFunction & window_function)
+DB::WindowFrame::FrameType WindowRelParser::parseWindowFrameType(const std::string & function_name, const substrait::Expression::WindowFunction & window_function)
 {
-    const auto & win_type = window_function.window_type();
     // It's weird! The frame type only could be rows in spark for rank(). But in clickhouse
     // it's should be range. If run rank() over rows frame, the result is different. The rank number
     // is different for the same values.
-    auto function_name = parseFunctionName(window_function.function_reference());
-    if (function_name && (*function_name == "rank" || *function_name == "dense_rank"))
-    {
-        return DB::WindowFrame::FrameType::RANGE;
-    }
-    if (win_type == substrait::ROWS)
+    static const std::unordered_map<std::string, substrait::WindowType> special_function_frame_type
+        = {
+            {"rank", substrait::RANGE},
+            {"dense_rank", substrait::RANGE},
+        };
+
+    substrait::WindowType frame_type;
+    auto iter = special_function_frame_type.find(function_name);
+    if (iter != special_function_frame_type.end())
+        frame_type = iter->second;
+    else
+        frame_type = window_function.window_type();
+
+    if (frame_type == substrait::ROWS)
     {
         return DB::WindowFrame::FrameType::ROWS;
     }
-    else if (win_type == substrait::RANGE)
+    else if (frame_type == substrait::RANGE)
     {
         return DB::WindowFrame::FrameType::RANGE;
     }
     else
     {
-        throw DB::Exception(DB::ErrorCodes::UNKNOWN_TYPE, "Unknow window frame type:{}", win_type);
+        throw DB::Exception(DB::ErrorCodes::UNKNOWN_TYPE, "Unknow window frame type:{}", frame_type);
     }
 }
 
 void WindowRelParser::parseBoundType(
+    const std::string & function_name,
     const substrait::Expression::WindowFunction::Bound & bound,
     bool is_begin_or_end,
     DB::WindowFrame::BoundaryType & bound_type,
@@ -234,7 +261,10 @@ DB::SortDescription WindowRelParser::parsePartitionBy(const google::protobuf::Re
 }
 
 WindowFunctionDescription WindowRelParser::parseWindowFunctionDescription(
-    const substrait::WindowRel & win_rel, const substrait::Expression::WindowFunction & window_function, const DB::Names & arg_names)
+    const substrait::WindowRel & win_rel,
+    const substrait::Expression::WindowFunction & window_function,
+    const DB::Names & arg_names,
+    const DB::DataTypes & arg_types)
 {
     auto header = current_plan->getCurrentDataStream().header;
     WindowFunctionDescription description;
@@ -249,20 +279,18 @@ WindowFunctionDescription WindowRelParser::parseWindowFunctionDescription(
     // Special transform for lead/lag
     if (*function_name == "lead" || *function_name == "lag")
     {
-        function_name = "any";
-        google::protobuf::RepeatedPtrField<substrait::FunctionArgument> real_args;
-        auto * arg = real_args.Add();
-        arg->CopyFrom(window_function.arguments(0));
-        auto arg_types = parseFunctionArgumentTypes(header, real_args);
+        if (*function_name == "lead")
+            function_name = "leadInFrame";
+        else
+            function_name = "lagInFrame";
         auto agg_function_ptr = getAggregateFunction(*function_name, arg_types, agg_function_props);
 
-        description.argument_names = parseFunctionArgumentNames(header, real_args);
+        description.argument_names = arg_names;
         description.argument_types = arg_types;
         description.aggregate_function = agg_function_ptr;
     }
     else
     {
-        auto arg_types = parseFunctionArgumentTypes(header, window_function.arguments());
         auto agg_function_ptr = getAggregateFunction(*function_name, arg_types, agg_function_props);
 
         description.argument_names = arg_names;
@@ -271,64 +299,6 @@ WindowFunctionDescription WindowRelParser::parseWindowFunctionDescription(
     }
 
     return description;
-}
-
-String WindowRelParser::getWindowName(const substrait::WindowRel & win_rel, const substrait::Expression::WindowFunction & window_function)
-{
-    DB::WriteBufferFromOwnString ss;
-    ss << getWindowFunctionColumnName(win_rel);
-    google::protobuf::util::JsonPrintOptions printOption;
-    printOption.always_print_primitive_fields = true;
-    printOption.add_whitespace = false;
-    String frame_type_str;
-    auto frame_type = parseWindowFrameType(window_function);
-    switch (frame_type)
-    {
-        case DB::WindowFrame::FrameType::ROWS:
-            frame_type_str = "Rows";
-            break;
-        case DB::WindowFrame::FrameType::RANGE:
-            frame_type_str = "Range";
-            break;
-        default:
-            break;
-    }
-    ss << " " << frame_type_str;
-    String upper_bound_str;
-    google::protobuf::util::MessageToJsonString(window_function.upper_bound(), &upper_bound_str, printOption);
-    String lower_bound_str;
-    google::protobuf::util::MessageToJsonString(window_function.lower_bound(), &lower_bound_str, printOption);
-    ss << " BETWEEN " << lower_bound_str << " AND " << upper_bound_str;
-    return ss.str();
-}
-String WindowRelParser::getWindowFunctionColumnName(const substrait::WindowRel & win_rel)
-{
-    google::protobuf::util::JsonPrintOptions printOption;
-    printOption.always_print_primitive_fields = true;
-    printOption.add_whitespace = false;
-    DB::WriteBufferFromOwnString ss;
-    size_t n = 0;
-    ss << "PATITION BY ";
-    for (const auto & expr : win_rel.partition_expressions())
-    {
-        if (n)
-            ss << ",";
-        String partition_exprs_str;
-        google::protobuf::util::MessageToJsonString(expr, &partition_exprs_str, printOption);
-        ss << partition_exprs_str;
-        n++;
-    }
-    ss << " ORDER BY ";
-    n = 0;
-    for (const auto & field : win_rel.sorts())
-    {
-        if (n)
-            ss << ",";
-        String order_by_str;
-        google::protobuf::util::MessageToJsonString(field, &order_by_str, printOption);
-        ss << order_by_str;
-    }
-    return ss.str();
 }
 
 void WindowRelParser::tryAddProjectionBeforeWindow(
@@ -340,30 +310,75 @@ void WindowRelParser::tryAddProjectionBeforeWindow(
     for (const auto & measure : win_rel.measures())
     {
         DB::Names names;
-        for (int i = 0, n = measure.measure().arguments().size(); i < n; ++i)
+        DB::DataTypes types;
+        auto function_name = parseFunctionName(measure.measure().function_reference());
+        if (function_name && (*function_name == "lead" || *function_name == "lag"))
         {
-            const auto & arg = measure.measure().arguments(i).value();
-            if (arg.has_selection())
+            const auto & arg0 = measure.measure().arguments(0).value();
+            const auto & col = header.getByPosition(arg0.selection().direct_reference().struct_field().field());
+            names.emplace_back(col.name);
+            types.emplace_back(col.type);
+
+            auto arg1 = measure.measure().arguments(1).value();
+            const DB::ActionsDAG::Node * node = nullptr;
+            // lag's offset is negative
+            if (*function_name == "lag")
             {
-                auto name = header.getByPosition(arg.selection().direct_reference().struct_field().field()).name;
-                names.push_back(name);
-            }
-            else if (arg.has_literal())
-            {
-                // for example, sum(2) over(...), we need to add new const column for 2, otherwise
-                // an exception of not found column(2) will throw.
-                const auto * node = parseArgument(actions_dag, arg);
-                names.push_back(node->result_name);
-                actions_dag->addOrReplaceInOutputs(*node);
-                need_project = true;
+                auto literal_result = parseLiteral(arg1.literal());
+                assert(literal_result.second.safeGet<DB::Int32>() < 0);
+                auto real_field = 0 - literal_result.second.safeGet<DB::Int32>();
+                node = &actions_dag->addColumn(ColumnWithTypeAndName(
+                    literal_result.first->createColumnConst(1, real_field), literal_result.first, getUniqueName(toString(real_field))));
             }
             else
             {
-                // There should be a projections ahead to eliminate complex expressions.
-                throw Exception(ErrorCodes::UNKNOWN_TYPE, "unsupported aggregate argument type {}.", arg.DebugString());
+                node = parseArgument(actions_dag, arg1);
+            }
+            node = ActionsDAGUtil::convertNodeType(actions_dag, node, DataTypeInt64().getName());
+            actions_dag->addOrReplaceInOutputs(*node);
+            names.emplace_back(node->result_name);
+            types.emplace_back(node->result_type);
+
+            const auto & arg2 = measure.measure().arguments(2).value();
+            if (arg2.has_literal() && !arg2.literal().has_null())
+            {
+                node = parseArgument(actions_dag, arg2);
+                actions_dag->addOrReplaceInOutputs(*node);
+                names.emplace_back(node->result_name);
+                types.emplace_back(node->result_type);
+            }
+            need_project = true;
+        }
+        else
+        {
+            for (int i = 0, n = measure.measure().arguments().size(); i < n; ++i)
+            {
+                const auto & arg = measure.measure().arguments(i).value();
+                if (arg.has_selection())
+                {
+                    const auto & col = header.getByPosition(arg.selection().direct_reference().struct_field().field());
+                    names.push_back(col.name);
+                    types.emplace_back(col.type);
+                }
+                else if (arg.has_literal())
+                {
+                    // for example, sum(2) over(...), we need to add new const column for 2, otherwise
+                    // an exception of not found column(2) will throw.
+                    const auto * node = parseArgument(actions_dag, arg);
+                    names.push_back(node->result_name);
+                    types.emplace_back(node->result_type);
+                    actions_dag->addOrReplaceInOutputs(*node);
+                    need_project = true;
+                }
+                else
+                {
+                    // There should be a projections ahead to eliminate complex expressions.
+                    throw Exception(ErrorCodes::UNKNOWN_TYPE, "unsupported aggregate argument type {}.", arg.DebugString());
+                }
             }
         }
         measures_arg_names.emplace_back(std::move(names));
+        measures_arg_types.emplace_back(std::move(types));
     }
     if (need_project)
     {
@@ -373,54 +388,6 @@ void WindowRelParser::tryAddProjectionBeforeWindow(
     }
 }
 
-void WindowRelParser::projectLeadLagDefaultValue(DB::QueryPlan & plan, const substrait::WindowRel & win_rel)
-{
-    auto header = plan.getCurrentDataStream().header;
-    DB::NamesWithAliases required_columns;
-    for (size_t i = 0, n = header.columns(); i < n; ++i)
-    {
-        const auto & col = header.getByPosition(i);
-        required_columns.emplace_back(NameWithAlias(col.name, col.name));
-    }
-
-    auto actions_dag = std::make_shared<DB::ActionsDAG>(header.getNamesAndTypesList());
-    std::string if_null_function_name = "ifNull";
-    auto convert_function
-        = [&](DB::ActionsDAGPtr & dag, size_t col_index, const std::string & col_name, const substrait::Expression & default_value)
-    {
-        auto if_null_function_builder = DB::FunctionFactory::instance().get(if_null_function_name, getContext());
-        const auto * col_field = dag->getInputs()[col_index];
-        const auto * col_node = dag->tryFindInOutputs(col_field->result_name);
-        DB::ActionsDAG::NodeRawConstPtrs if_null_args;
-        if_null_args.push_back(col_node);
-        const auto * default_value_node = parseArgument(dag, default_value);
-        if_null_args.push_back(default_value_node);
-        const auto * if_null_function_node = &dag->addFunction(if_null_function_builder, if_null_args, col_name);
-        dag->addOrReplaceInOutputs(*if_null_function_node);
-    };
-
-    for (size_t measure_index = 0, n = win_rel.measures().size(); measure_index < n; ++measure_index)
-    {
-        const auto & function_pb = win_rel.measures(measure_index).measure();
-        auto function_name = parseFunctionName(function_pb.function_reference());
-        auto col_index = header.columns() - win_rel.measures().size() + measure_index;
-        const auto col = header.getByPosition(col_index);
-        std::string measure_col_name = col.name;
-        if (function_name == "lead" || function_name == "lag")
-        {
-            if (!function_pb.arguments(1).value().literal().has_null())
-            {
-                measure_col_name = function_pb.column_name();
-                convert_function(actions_dag, col_index, measure_col_name, function_pb.arguments(1).value());
-
-            }
-        }
-    }
-    auto project_step = std::make_unique<DB::ExpressionStep>(plan.getCurrentDataStream(), actions_dag);
-    project_step->setStepDescription("Fill default value");
-    plan.addStep(std::move(project_step));
-    actions_dag->project(required_columns);
-}
 
 void registerWindowRelParser(RelParserFactory & factory)
 {

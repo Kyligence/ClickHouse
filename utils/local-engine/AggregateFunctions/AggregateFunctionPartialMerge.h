@@ -47,7 +47,7 @@ public:
 
     String getName() const override
     {
-        return nested_func->getName() + "Merge";
+        return nested_func->getName() + "PartialMerge";
     }
 
     static DataTypePtr createResultType(const AggregateFunctionPtr & nested_)

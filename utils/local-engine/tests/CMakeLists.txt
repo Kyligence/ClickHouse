@@ -34,6 +34,8 @@ target_compile_options(benchmark PUBLIC
         -Wno-undef
         -Wno-used-but-marked-unused
         -Wno-zero-as-null-pointer-constant
+        -Wno-shift-sign-overflow
+        -Wno-thread-safety-analysis
         )
 
 grep_gtest_sources("${ClickHouse_SOURCE_DIR}/utils/local_engine/tests" local_engine_gtest_sources)
@@ -47,5 +49,5 @@ target_include_directories(unit_tests_local_engine PRIVATE
         )
 include_directories(benchmark_local_engine SYSTEM PUBLIC ${FETCH_CONTENT_SOURCE_DIR_GOOGLEBENCHMARK}/include ${ClickHouse_SOURCE_DIR}/utils/local_engine)
 
-target_link_libraries(unit_tests_local_engine PRIVATE ${LOCALENGINE_SHARED_LIB} _gtest_all)
+target_link_libraries(unit_tests_local_engine PRIVATE ${LOCALENGINE_SHARED_LIB} _gtest_all clickhouse_parsers)
 target_link_libraries(benchmark_local_engine PRIVATE ${LOCALENGINE_SHARED_LIB} benchmark::benchmark)

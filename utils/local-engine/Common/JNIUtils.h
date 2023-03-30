@@ -6,12 +6,13 @@ namespace local_engine
 class JNIUtils
 {
 public:
-    static JavaVM * vm;
+    inline static JavaVM * vm = nullptr;
 
     static JNIEnv * getENV(int * attach);
 
     static void detachCurrentThread();
 };
+
 #define GET_JNIENV(env) \
     int attached; \
     JNIEnv * (env) = JNIUtils::getENV(&attached);
@@ -21,4 +22,5 @@ public:
     { \
         JNIUtils::detachCurrentThread(); \
     }
+
 }

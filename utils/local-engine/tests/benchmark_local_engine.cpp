@@ -28,6 +28,7 @@
 #include <Storages/CustomStorageMergeTree.h>
 #include <Storages/MergeTree/MergeTreeData.h>
 #include <Storages/SelectQueryInfo.h>
+#include <QueryPipeline/QueryPipelineBuilder.h>
 #include <Storages/SubstraitSource/ReadBufferBuilder.h>
 #include <Common/logger_useful.h>
 #include <benchmark/benchmark.h>
@@ -47,7 +48,6 @@
 using namespace local_engine;
 using namespace dbms;
 
-bool inside_main = true;
 DB::ContextMutablePtr global_context;
 
 [[maybe_unused]] static void BM_CHColumnToSparkRow(benchmark::State & state)
@@ -123,7 +123,7 @@ DB::ContextMutablePtr global_context;
     {
         state.PauseTiming();
         auto query_info = local_engine::buildQueryInfo(names_and_types_list);
-        auto data_parts = custom_merge_tree.getDataPartsVector();
+        auto data_parts = custom_merge_tree.getDataPartsVectorForInternalUsage();
         int min_block = 0;
         int max_block = state.range(0);
         MergeTreeData::DataPartsVector selected_parts;
@@ -136,10 +136,9 @@ DB::ContextMutablePtr global_context;
         auto query = custom_merge_tree.reader.readFromParts(
             selected_parts, names_and_types_list.getNames(), snapshot, *query_info, global_context, 10000, 1);
         QueryPlanOptimizationSettings optimization_settings{.optimize_plan = false};
-        QueryPipelineBuilder query_pipeline;
-        query_pipeline.init(query->convertToPipe(optimization_settings, BuildQueryPipelineSettings()));
+        auto query_pipeline = query->buildQueryPipeline(optimization_settings, {});
         state.ResumeTiming();
-        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(query_pipeline));
+        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(*query_pipeline));
         auto executor = PullingPipelineExecutor(pipeline);
         Chunk chunk;
         int sum = 0;
@@ -238,7 +237,7 @@ DB::ContextMutablePtr global_context;
     {
         state.PauseTiming();
         auto query_info = local_engine::buildQueryInfo(names_and_types_list);
-        auto data_parts = custom_merge_tree.getDataPartsVector();
+        auto data_parts = custom_merge_tree.getDataPartsVectorForInternalUsage();
         int min_block = 0;
         int max_block = state.range(0);
         MergeTreeData::DataPartsVector selected_parts;
@@ -251,9 +250,8 @@ DB::ContextMutablePtr global_context;
         auto query = custom_merge_tree.reader.readFromParts(
             selected_parts, names_and_types_list.getNames(), snapshot, *query_info, global_context, 10000, 1);
         QueryPlanOptimizationSettings optimization_settings{.optimize_plan = false};
-        QueryPipelineBuilder query_pipeline;
-        query_pipeline.init(query->convertToPipe(optimization_settings, BuildQueryPipelineSettings()));
-        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(query_pipeline));
+        auto query_pipeline = query->buildQueryPipeline(optimization_settings, {});
+        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(*query_pipeline));
         state.ResumeTiming();
         auto executor = PullingPipelineExecutor(pipeline);
         Block chunk = executor.getHeader();
@@ -324,7 +322,7 @@ DB::ContextMutablePtr global_context;
     {
         state.PauseTiming();
         auto query_info = local_engine::buildQueryInfo(names_and_types_list);
-        auto data_parts = custom_merge_tree.getDataPartsVector();
+        auto data_parts = custom_merge_tree.getDataPartsVectorForInternalUsage();
         int min_block = 0;
         int max_block = state.range(0);
         MergeTreeData::DataPartsVector selected_parts;
@@ -337,9 +335,8 @@ DB::ContextMutablePtr global_context;
         auto query = custom_merge_tree.reader.readFromParts(
             selected_parts, names_and_types_list.getNames(), snapshot, *query_info, global_context, 10000, 1);
         QueryPlanOptimizationSettings optimization_settings{.optimize_plan = false};
-        QueryPipelineBuilder query_pipeline;
-        query_pipeline.init(query->convertToPipe(optimization_settings, BuildQueryPipelineSettings()));
-        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(query_pipeline));
+        auto query_pipeline = query->buildQueryPipeline(optimization_settings, {});
+        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(*query_pipeline));
         state.ResumeTiming();
         auto executor = PullingPipelineExecutor(pipeline);
         Block chunk = executor.getHeader();
@@ -1070,8 +1067,8 @@ DB::ContextMutablePtr global_context;
     assert(q >= 0.0 && q <= 1.0);
     const int n = x.size();
     double id = (n - 1) * q;
-    int lo = floor(id);
-    int hi = ceil(id);
+    int lo = static_cast<int>(floor(id));
+    int hi = static_cast<int>(ceil(id));
     double qs = x[lo];
     double h = (id - lo);
     return (1.0 - h) * qs + h * x[hi];
@@ -1079,7 +1076,7 @@ DB::ContextMutablePtr global_context;
 
 // compress benchmark
 #include <optional>
-#include <string.h>
+#include <cstring>
 #include <base/types.h>
 
 #include <Compression/CompressionInfo.h>
@@ -1299,7 +1296,7 @@ public:
     {
         state.PauseTiming();
         auto query_info = local_engine::buildQueryInfo(names_and_types_list);
-        auto data_parts = custom_merge_tree.getDataPartsVector();
+        auto data_parts = custom_merge_tree.getDataPartsVectorForInternalUsage();
         int min_block = 0;
         int max_block = 10;
         MergeTreeData::DataPartsVector selected_parts;
@@ -1312,10 +1309,9 @@ public:
         auto query = custom_merge_tree.reader.readFromParts(
             selected_parts, names_and_types_list.getNames(), snapshot, *query_info, global_context, 10000, 1);
         QueryPlanOptimizationSettings optimization_settings{.optimize_plan = false};
-        QueryPipelineBuilder query_pipeline;
-        query_pipeline.init(query->convertToPipe(optimization_settings, BuildQueryPipelineSettings()));
+        auto query_pipeline = query->buildQueryPipeline(optimization_settings, {});
         state.ResumeTiming();
-        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(query_pipeline));
+        auto pipeline = QueryPipelineBuilder::getPipeline(std::move(*query_pipeline));
         auto executor = PullingPipelineExecutor(pipeline);
         Block header = executor.getHeader();
         CHColumnToSparkRow converter;
@@ -1352,12 +1348,7 @@ MergeTreeWithSnapshot buildMergeTree(NamesAndTypesList names_and_types, std::str
 QueryPlanPtr readFromMergeTree(MergeTreeWithSnapshot storage)
 {
     auto query_info = local_engine::buildQueryInfo(storage.columns);
-    auto data_parts = storage.merge_tree->getDataPartsVector();
-    //    int min_block = 0;
-    //    int max_block = 10;
-    //    MergeTreeData::DataPartsVector selected_parts;
-    //    std::copy_if(std::begin(data_parts), std::end(data_parts), std::inserter(selected_parts, std::begin(selected_parts)),
-    //                 [min_block, max_block](MergeTreeData::DataPartPtr part) { return part->info.min_block>=min_block && part->info.max_block <= max_block;});
+    auto data_parts = storage.merge_tree->getDataPartsVectorForInternalUsage();
     return storage.merge_tree->reader.readFromParts(
         data_parts, storage.columns.getNames(), storage.snapshot, *query_info, global_context, 10000, 1);
 }
@@ -1367,8 +1358,8 @@ QueryPlanPtr joinPlan(QueryPlanPtr left, QueryPlanPtr right, String left_key, St
     auto join = std::make_shared<TableJoin>(global_context->getSettings(), global_context->getTemporaryVolume());
     auto left_columns = left->getCurrentDataStream().header.getColumnsWithTypeAndName();
     auto right_columns = right->getCurrentDataStream().header.getColumnsWithTypeAndName();
-    join->setKind(ASTTableJoin::Kind::Left);
-    join->setStrictness(ASTTableJoin::Strictness::All);
+    join->setKind(JoinKind::Left);
+    join->setStrictness(JoinStrictness::All);
     join->setColumnsFromJoinedTable(right->getCurrentDataStream().header.getNamesAndTypesList());
     join->addDisjunct();
     ASTPtr lkey = std::make_shared<ASTIdentifier>(left_key);
@@ -1401,7 +1392,7 @@ QueryPlanPtr joinPlan(QueryPlanPtr left, QueryPlanPtr right, String left_key, St
     auto hash_join = std::make_shared<HashJoin>(join, right->getCurrentDataStream().header);
 
     QueryPlanStepPtr join_step
-        = std::make_unique<JoinStep>(left->getCurrentDataStream(), right->getCurrentDataStream(), hash_join, block_size);
+        = std::make_unique<JoinStep>(left->getCurrentDataStream(), right->getCurrentDataStream(), hash_join, block_size, 1, false);
 
     std::vector<QueryPlanPtr> plans;
     plans.emplace_back(std::move(left));
@@ -1515,8 +1506,7 @@ int main(int argc, char ** argv)
     SerializedPlanParser::global_context = global_context;
     local_engine::SerializedPlanParser::initFunctionEnv();
 
-    auto & factory = local_engine::ReadBufferBuilderFactory::instance();
-    registerReadBufferBuildes(factory);
+    registerReadBufferBuilders();
 
     ::benchmark::Initialize(&argc, argv);
     if (::benchmark::ReportUnrecognizedArguments(argc, argv))

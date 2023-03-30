@@ -6,6 +6,7 @@
 #include <Storages/CustomMergeTreeSink.h>
 #include <Parsers/ASTFunction.h>
 #include <Processors/Executors/PipelineExecutor.h>
+#include <QueryPipeline/QueryPipelineBuilder.h>
 #include <Common/MergeTreeTool.h>
 #include <substrait/plan.pb.h>
 

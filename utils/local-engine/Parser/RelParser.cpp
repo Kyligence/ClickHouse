@@ -45,24 +45,31 @@ DB::DataTypes RelParser::parseFunctionArgumentTypes(
         {
             throw DB::Exception(DB::ErrorCodes::LOGICAL_ERROR, "Expect a FunctionArgument with value field");
         }
-        const auto & value = arg.value();
-        if (value.has_selection())
-        {
-            auto pos = value.selection().direct_reference().struct_field().field();
-            res.push_back(header.getByPosition(pos).type);
-        }
-        else if (value.has_literal())
-        {
-            auto [data_type, _] = SerializedPlanParser::parseLiteral(value.literal());
-            res.push_back(data_type);
-        }
-        else
-        {
-            throw DB::Exception(DB::ErrorCodes::LOGICAL_ERROR, "Unknow FunctionArgument: {}", arg.DebugString());
-        }
+        res.emplace_back(parseExpressionType(header, arg.value()));
     }
     return res;
 }
+
+DB::DataTypePtr RelParser::parseExpressionType(const Block & header, const substrait::Expression & expr)
+{
+    DB::DataTypePtr res;
+    if (expr.has_selection())
+    {
+        auto pos = expr.selection().direct_reference().struct_field().field();
+        res = header.getByPosition(pos).type;
+    }
+    else if (expr.has_literal())
+    {
+        auto [data_type, _] = SerializedPlanParser::parseLiteral(expr.literal());
+        res = data_type;
+    }
+    else
+    {
+        throw DB::Exception(DB::ErrorCodes::LOGICAL_ERROR, "Unknow FunctionArgument: {}", expr.DebugString());
+    }
+    return res;
+}
+
 
 DB::Names RelParser::parseFunctionArgumentNames(
     const Block & header, const google::protobuf::RepeatedPtrField<substrait::FunctionArgument> & func_args)
@@ -122,7 +129,8 @@ RelParserFactory::RelParserBuilder RelParserFactory::getBuilder(DB::UInt32 k)
 void registerWindowRelParser(RelParserFactory & factory);
 void registerSortRelParser(RelParserFactory & factory);
 void registerExpandRelParser(RelParserFactory & factory);
-void initRelParserFactory()
+
+void registerRelParsers()
 {
     auto & factory = RelParserFactory::instance();
     registerWindowRelParser(factory);

@@ -127,8 +127,7 @@ static void writeVariableLengthNonNullableValue(
             {
                 StringRef str_view = col.column->getDataAt(i);
                 String buf(str_view.data, str_view.size);
-                auto * decimal128 = reinterpret_cast<Decimal128 *>(buf.data());
-                BackingDataLengthCalculator::swapBytes(*decimal128);
+                BackingDataLengthCalculator::swapDecimalEndianBytes(buf);
                 int64_t offset_and_size = writer.writeUnalignedBytes(i, buf.data(), buf.size(), 0);
                 memcpy(buffer_address + offsets[i] + field_offset, &offset_and_size, 8);
             }
@@ -180,8 +179,7 @@ static void writeVariableLengthNullableValue(
                 nested_column.get(i, field);
                 StringRef str_view = nested_column.getDataAt(i);
                 String buf(str_view.data, str_view.size);
-                auto * decimal128 = reinterpret_cast<Decimal128 *>(buf.data());
-                BackingDataLengthCalculator::swapBytes(*decimal128);
+                BackingDataLengthCalculator::swapDecimalEndianBytes(buf);
                 int64_t offset_and_size = writer.writeUnalignedBytes(i, buf.data(), buf.size(), 0);
                 memcpy(buffer_address + offsets[i] + field_offset, &offset_and_size, 8);
             }
@@ -543,23 +541,18 @@ bool BackingDataLengthCalculator::isBigEndianInSparkRow(const DB::DataTypePtr & 
     return which.isDecimal128();
 }
 
-void BackingDataLengthCalculator::swapBytes(DB::Decimal128 & decimal128)
+void BackingDataLengthCalculator::swapDecimalEndianBytes(String & buf)
 {
-    auto & x = decimal128.value;
-    for (size_t i = 0; i != std::size(x.items); ++i)
-        x.items[i] = __builtin_bswap64(x.items[i]);
-}
-
-Decimal128 BackingDataLengthCalculator::getDecimal128FromBytes(const String & bytes)
-{
-    assert(bytes.size() == 16);
+    assert(buf.size() == 16);
 
     using base_type = Decimal128::NativeType::base_type;
-    String bytes_copy(bytes);
-    base_type * high = reinterpret_cast<base_type *>(bytes_copy.data() + 8);
-    base_type * low = reinterpret_cast<base_type *>(bytes_copy.data());
+    auto * decimal128 = reinterpret_cast<Decimal128 *>(buf.data());
+    for (size_t i = 0; i != std::size(decimal128->value.items); ++i)
+        decimal128->value.items[i] = __builtin_bswap64(decimal128->value.items[i]);
+
+    base_type * high = reinterpret_cast<base_type *>(buf.data() + 8);
+    base_type * low = reinterpret_cast<base_type *>(buf.data());
     std::swap(*high, *low);
-    return std::move(*reinterpret_cast<Decimal128 *>(bytes_copy.data()));
 }
 
 VariableLengthDataWriter::VariableLengthDataWriter(
@@ -719,7 +712,8 @@ int64_t VariableLengthDataWriter::writeStruct(size_t row_idx, const DB::Tuple & 
         {
             FixedLengthDataWriter writer(field_type);
             // writer.write(field_value, buffer_address + offset + start + len_null_bitmap + i * 8);
-            writer.unsafeWrite(reinterpret_cast<char*>(&field_value.safeGet<char>()), buffer_address + offset + start + len_null_bitmap + i * 8);
+            writer.unsafeWrite(
+                reinterpret_cast<const char *>(&field_value.get<char>()), buffer_address + offset + start + len_null_bitmap + i * 8);
         }
         else
         {
@@ -748,8 +742,9 @@ int64_t VariableLengthDataWriter::write(size_t row_idx, const DB::Field & field,
     {
         const auto & decimal_field = field.safeGet<DecimalField<Decimal128>>();
         auto decimal128 = decimal_field.getValue();
-        BackingDataLengthCalculator::swapBytes(decimal128);
-        return writeUnalignedBytes(row_idx, reinterpret_cast<const char *>(&decimal128), sizeof(Decimal128), parent_offset);
+        String buf(reinterpret_cast<const char *>(&decimal128), sizeof(decimal128));
+        BackingDataLengthCalculator::swapDecimalEndianBytes(buf);
+        return writeUnalignedBytes(row_idx, buf.c_str(), sizeof(Decimal128), parent_offset);
     }
 
     if (which.isArray())

@@ -7,9 +7,9 @@
 #include <Parser/CHColumnToSparkRow.h>
 #include <Processors/Executors/PullingPipelineExecutor.h>
 #include <Processors/Formats/Impl/CHColumnToArrowColumn.h>
-#include <Processors/QueryPlan/AggregatingStep.h>
 #include <Processors/QueryPlan/ISourceStep.h>
 #include <Processors/QueryPlan/QueryPlan.h>
+#include <Interpreters/Aggregator.h>
 #include <QueryPipeline/Pipe.h>
 #include <Storages/CustomStorageMergeTree.h>
 #include <Storages/IStorage.h>
@@ -47,6 +47,7 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"quarter", "toQuarter"},
     {"to_unix_timestamp", "toUnixTimestamp"},
     {"unix_timestamp", "toUnixTimestamp"},
+    {"date_format", "formatDateTimeInJodaSyntax"},
 
     /// arithmetic functions
     {"subtract", "minus"},
@@ -97,6 +98,7 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"check_overflow", "check_overflow"},
     {"factorial", "factorial"},
     {"rand", "randCanonical"},
+    {"isnan", "isNaN"},
 
     /// string functions
     {"like", "like"},
@@ -107,9 +109,9 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"substring", "substring"},
     {"lower", "lower"},
     {"upper", "upper"},
-    {"trim", "trimBoth"},
-    {"ltrim", "trimLeft"},
-    {"rtrim", "trimRight"},
+    {"trim", ""},
+    {"ltrim", ""},
+    {"rtrim", ""},
     {"concat", "concat"},
     {"strpos", "position"},
     {"char_length", "char_length"},
@@ -128,6 +130,14 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     // {"hash","murmurHash3_32"},
     {"md5","MD5"},
     {"locate","locate"},
+    {"translate", "translateUTF8"},
+    {"repeat","repeat"},
+    {"position", "positionUTF8Spark"},
+    {"locate", "positionUTF8Spark"},
+
+    /// hash functions
+    {"hash", "murmurHashSpark3_32"},
+    {"xxhash64", "xxHashSpark64"},
 
     // in functions
     {"in", "in"},
@@ -142,13 +152,17 @@ static const std::map<std::string, std::string> SCALAR_FUNCTIONS = {
     {"min", "min"},
     {"max", "max"},
     {"collect_list", "groupArray"},
+    {"stddev_samp", "stddev_samp"},
+    {"stddev_pop", "stddev_pop"},
 
     // date or datetime functions
-    {"from_unixtime", "FROM_UNIXTIME"},
+    {"from_unixtime", "fromUnixTimestampInJodaSyntax"},
     {"date_add", "addDays"},
     {"date_sub", "subtractDays"},
     {"datediff", "dateDiff"},
     {"second", "toSecond"},
+    {"add_months", "addMonths"},
+    {"trunc", ""},  /// dummy mapping
 
     // array functions
     {"array", "array"},
@@ -191,6 +205,7 @@ DataTypePtr wrapNullableType(bool nullable, DataTypePtr nested_type);
 class SerializedPlanParser
 {
     friend class RelParser;
+    friend class ASTParser;
 public:
     explicit SerializedPlanParser(const ContextPtr & context);
     static void initFunctionEnv();
@@ -228,6 +243,13 @@ private:
     void
     collectJoinKeys(const substrait::Expression & condition, std::vector<std::pair<int32_t, int32_t>> & join_keys, int32_t right_key_start);
     DB::QueryPlanPtr parseJoin(substrait::JoinRel join, DB::QueryPlanPtr left, DB::QueryPlanPtr right);
+    void parseJoinKeysAndCondition(
+        std::shared_ptr<TableJoin> table_join,
+        substrait::JoinRel & join,
+        DB::QueryPlanPtr & left,
+        DB::QueryPlanPtr & right,
+        const NamesAndTypesList & alias_right,
+        Names & names);
 
     static void reorderJoinOutput(DB::QueryPlan & plan, DB::Names cols);
     static std::string getFunctionName(const std::string & function_sig, const substrait::Expression_ScalarFunction & function);
@@ -238,9 +260,22 @@ private:
         std::vector<String> & required_columns,
         DB::ActionsDAGPtr actions_dag = nullptr,
         bool keep_result = false);
+    DB::ActionsDAGPtr parseArrayJoin(
+        const Block & input,
+        const substrait::Expression & rel,
+        std::vector<String> & result_names,
+        std::vector<String> & required_columns,
+        DB::ActionsDAGPtr actions_dag = nullptr,
+        bool keep_result = false);
     const ActionsDAG::Node * parseFunctionWithDAG(
         const substrait::Expression & rel,
         std::string & result_name,
+        std::vector<String> & required_columns,
+        DB::ActionsDAGPtr actions_dag = nullptr,
+        bool keep_result = false);
+    ActionsDAG::NodeRawConstPtrs parseArrayJoinWithDAG(
+        const substrait::Expression & rel,
+        std::vector<String> & result_name,
         std::vector<String> & required_columns,
         DB::ActionsDAGPtr actions_dag = nullptr,
         bool keep_result = false);
@@ -311,7 +346,7 @@ private:
 
     void addRemoveNullableStep(QueryPlan & plan, std::vector<String> columns);
 
-    std::pair<DB::DataTypePtr, DB::Field> convertStructFieldType(const DB::DataTypePtr & type, const DB::Field & field);
+    static std::pair<DB::DataTypePtr, DB::Field> convertStructFieldType(const DB::DataTypePtr & type, const DB::Field & field);
 
     int name_no = 0;
     std::unordered_map<std::string, std::string> function_mapping;
@@ -349,5 +384,24 @@ private:
     std::unique_ptr<CHColumnToSparkRow> ch_column_to_spark_row;
     std::unique_ptr<SparkBuffer> spark_buffer;
     DB::QueryPlanPtr current_query_plan;
+};
+
+
+class ASTParser
+{
+public:
+    explicit ASTParser(const ContextPtr & _context, std::unordered_map<std::string, std::string> & _function_mapping)
+        : context(_context), function_mapping(_function_mapping){};
+    ~ASTParser() = default;
+
+    ASTPtr parseToAST(const Names & names, const substrait::Expression & rel);
+    ActionsDAGPtr convertToActions(const NamesAndTypesList & name_and_types, const ASTPtr & ast);
+
+private:
+    ContextPtr context;
+    std::unordered_map<std::string, std::string> function_mapping;
+
+    void parseFunctionArgumentsToAST(const Names & names, const substrait::Expression_ScalarFunction & scalar_function, ASTs & ast_args);
+    ASTPtr parseArgumentToAST(const Names & names, const substrait::Expression & rel);
 };
 }

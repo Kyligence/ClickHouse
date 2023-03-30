@@ -1,6 +1,8 @@
 #include "ShuffleSplitter.h"
 #include <filesystem>
+#include <format>
 #include <memory>
+#include <string>
 #include <fcntl.h>
 #include <Compression/CompressedWriteBuffer.h>
 #include <Compression/CompressionFactory.h>
@@ -178,11 +180,18 @@ ShuffleSplitter::Ptr ShuffleSplitter::create(const std::string & short_name, Spl
 
 std::string ShuffleSplitter::getPartitionTempFile(size_t partition_id)
 {
-    std::string dir = std::filesystem::path(options.local_tmp_dir) / "_shuffle_data" / std::to_string(options.map_id);
+    auto file_name = std::to_string(options.shuffle_id) + "_" + std::to_string(options.map_id) + "_" + std::to_string(partition_id);
+    std::hash<std::string> hasher;
+    auto hash = hasher(file_name);
+    auto dir_id = hash % options.local_dirs_list.size();
+    auto sub_dir_id = (hash / options.local_dirs_list.size()) % options.num_sub_dirs;
+
+    std::string dir = std::filesystem::path(options.local_dirs_list[dir_id]) / std::format("{:02x}", sub_dir_id);
     if (!std::filesystem::exists(dir))
         std::filesystem::create_directories(dir);
-    return std::filesystem::path(dir) / std::to_string(partition_id);
+    return std::filesystem::path(dir) / file_name;
 }
+
 std::unique_ptr<DB::WriteBuffer> ShuffleSplitter::getPartitionWriteBuffer(size_t partition_id)
 {
     auto file = getPartitionTempFile(partition_id);

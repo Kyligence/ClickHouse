@@ -38,10 +38,15 @@ protected:
     inline const std::unordered_map<std::string, std::string> & getFunctionMapping() { return plan_parser->function_mapping; }
     std::optional<String> parseFunctionName(UInt32 function_ref);
     static DB::DataTypes parseFunctionArgumentTypes(const Block & header, const google::protobuf::RepeatedPtrField<substrait::FunctionArgument> & func_args);
+    static DB::DataTypePtr parseExpressionType(const Block & header, const substrait::Expression & expr);
     static DB::Names parseFunctionArgumentNames(const Block & header, const google::protobuf::RepeatedPtrField<substrait::FunctionArgument> & func_args);
     const DB::ActionsDAG::Node * parseArgument(ActionsDAGPtr action_dag, const substrait::Expression & rel)
     {
         return plan_parser->parseArgument(action_dag, rel);
+    }
+    std::pair<DataTypePtr, Field> parseLiteral(const substrait::Expression_Literal & literal)
+    {
+        return plan_parser->parseLiteral(literal);
     }
 
 private:
@@ -61,6 +66,5 @@ private:
     std::map<UInt32, RelParserBuilder> builders;
 };
 
-void initRelParserFactory();
-
+void registerRelParsers();
 }

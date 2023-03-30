@@ -422,6 +422,8 @@ endif ()
 
 include(cmake/dbms_glob_sources.cmake)
 
+set (CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 add_library(global-group INTERFACE)
 if (OS_LINUX OR OS_ANDROID)
     include(cmake/linux/default_libs.cmake)
@@ -452,7 +454,6 @@ endif ()
 
 set (CMAKE_POSTFIX_VARIABLE "CMAKE_${CMAKE_BUILD_TYPE_UC}_POSTFIX")
 
-set (CMAKE_POSITION_INDEPENDENT_CODE OFF)
 if (OS_LINUX AND NOT ARCH_AARCH64)
     # Slightly more efficient code can be generated
     # It's disabled for ARM because otherwise ClickHouse cannot run on Android.

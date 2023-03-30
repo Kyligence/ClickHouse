@@ -86,7 +86,7 @@ void ExpandTransform::work()
             // the output columns should all be nullable.
             if (!sets.contains(i))
             {
-                auto null_map = DB::ColumnInt8::create(rows, 1);
+                auto null_map = DB::ColumnUInt8::create(rows, 1);
                 auto col = DB::ColumnNullable::create(original_col, std::move(null_map));
                 cols.push_back(std::move(col));
             }
@@ -96,7 +96,7 @@ void ExpandTransform::work()
                     cols.push_back(original_col);
                 else
                 {
-                    auto null_map = DB::ColumnInt8::create(rows, 0);
+                    auto null_map = DB::ColumnUInt8::create(rows, 0);
                     auto col = DB::ColumnNullable::create(original_col, std::move(null_map));
                     cols.push_back(std::move(col));
                 }

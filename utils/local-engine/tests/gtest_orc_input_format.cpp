@@ -104,7 +104,7 @@ std::vector<local_engine::StripeInformation> collectRequiredStripes(DB::ReadBuff
     DB::FormatSettings format_settings;
     format_settings.seekable_read = true;
     std::atomic<int> is_stopped{0};
-    auto arrow_file = DB::asArrowFile(*read_buffer, format_settings, is_stopped);
+    auto arrow_file = DB::asArrowFile(*read_buffer, format_settings, is_stopped, "ORC", ORC_MAGIC_BYTES);
     auto orc_reader = local_engine::OrcUtil::createOrcReader(arrow_file);
     auto num_stripes = orc_reader->getNumberOfStripes();
 

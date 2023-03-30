@@ -2,7 +2,6 @@
 
 namespace local_engine
 {
-JavaVM * JNIUtils::vm = nullptr;
 
 JNIEnv * JNIUtils::getENV(int * attach)
 {
@@ -28,8 +27,10 @@ JNIEnv * JNIUtils::getENV(int * attach)
     }
     return jni_env;
 }
+
 void JNIUtils::detachCurrentThread()
 {
     vm->DetachCurrentThread();
 }
+
 }
