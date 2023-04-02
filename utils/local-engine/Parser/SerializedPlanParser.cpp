@@ -700,7 +700,7 @@ QueryPlanPtr SerializedPlanParser::parse(std::unique_ptr<substrait::Plan> plan)
             ActionsDAGPtr actions_dag = std::make_shared<ActionsDAG>(blockToNameAndTypeList(query_plan->getCurrentDataStream().header));
             NamesWithAliases aliases;
             auto cols = query_plan->getCurrentDataStream().header.getNamesAndTypesList();
-            for (int i = 0; i < cols.getNames().size(); i++)
+            for (size_t i = 0; i < cols.getNames().size(); i++)
             {
                 aliases.emplace_back(NameWithAlias(cols.getNames()[i], root_rel.root().names(i)));
             }
@@ -1645,6 +1645,34 @@ void SerializedPlanParser::parseFunctionArguments(
         function_name = "repeat";
         parsed_args.emplace_back(space_str_node);
         parsed_args.emplace_back(repeat_times_node);
+    }
+    else if (function_name == "json_tuple")
+    {
+        function_name = "JSONExtract";
+        const DB::ActionsDAG::Node * json_expr_node = parseFunctionArgument(actions_dag, required_columns, "JSONExtract", args[0]);
+        std::string extract_expr = "Tuple(";
+        for (int i = 1; i < args.size(); i++)
+        {
+            auto arg_value = args[i].value();
+            if (!arg_value.has_literal())
+            {
+                throw DB::Exception(DB::ErrorCodes::BAD_ARGUMENTS, "The arguments of function {} must be string literal", function_name);
+            }
+            DB::Field f = arg_value.literal().string();
+            std::string s;
+            if (f.tryGet(s))
+            {
+                extract_expr.append(s).append(" Nullable(String)");
+                if (i != args.size() - 1)
+                {
+                    extract_expr.append(",");
+                }
+            }
+        }
+        extract_expr.append(")");
+        const DB::ActionsDAG::Node * extract_expr_node = add_column(std::make_shared<DataTypeString>(), extract_expr);
+        parsed_args.emplace_back(json_expr_node);
+        parsed_args.emplace_back(extract_expr_node);
     }
     else
     {
