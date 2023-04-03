@@ -60,7 +60,7 @@ NativeSplitter::NativeSplitter(Options options_, jobject input_) : options(optio
     partition_buffer.reserve(options.partition_nums);
     for (size_t i = 0; i < options.partition_nums; ++i)
     {
-        partition_buffer.emplace_back(std::make_shared<ColumnsBuffer>());
+        partition_buffer.emplace_back(std::make_shared<ColumnsBuffer>(options.buffer_size));
     }
     CLEAN_JNIENV
 }
