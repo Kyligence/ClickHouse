@@ -207,7 +207,7 @@ class SerializedPlanParser
     friend class RelParser;
     friend class ASTParser;
 public:
-    explicit SerializedPlanParser(const ContextMutablePtr & context);
+    explicit SerializedPlanParser(const ContextPtr & context);
     static void initFunctionEnv();
     DB::QueryPlanPtr parse(const std::string & plan);
     DB::QueryPlanPtr parseJson(const std::string & json_plan);
@@ -352,7 +352,7 @@ private:
     std::unordered_map<std::string, std::string> function_mapping;
     std::vector<jobject> input_iters;
     const substrait::ProjectRel * last_project = nullptr;
-    ContextMutablePtr context;
+    ContextPtr context;
 
 };
 

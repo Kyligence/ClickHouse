@@ -528,6 +528,8 @@ void BackendInitializerUtil::initSettings()
     settings.set("input_format_orc_case_insensitive_column_matching", true);
     settings.set("input_format_parquet_allow_missing_columns", true);
     settings.set("input_format_parquet_case_insensitive_column_matching", true);
+    settings.set("function_json_value_return_type_allow_complex", true);
+    settings.set("function_json_value_return_type_allow_nullable", true);
 }
 
 void BackendInitializerUtil::initContexts()

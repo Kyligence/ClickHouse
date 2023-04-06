@@ -1472,8 +1472,6 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
         }
         if (function_name == "JSON_VALUE")
         {
-            context->setSetting("function_json_value_return_type_allow_complex", true);
-            context->setSetting("function_json_value_return_type_allow_nullable", true);
             result_node->function->setResolver(function_builder);
         }
         if (keep_result)
@@ -2101,7 +2099,7 @@ void SerializedPlanParser::initFunctionEnv()
     registerFunctions();
     registerAggregateFunctions();
 }
-SerializedPlanParser::SerializedPlanParser(const ContextMutablePtr & context_) : context(context_)
+SerializedPlanParser::SerializedPlanParser(const ContextPtr & context_) : context(context_)
 {
 }
 ContextMutablePtr SerializedPlanParser::global_context = nullptr;
