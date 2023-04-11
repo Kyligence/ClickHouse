@@ -13,6 +13,7 @@
 #include <DataTypes/DataTypeNullable.h>
 #include <DataTypes/DataTypeTuple.h>
 #include <DataTypes/DataTypesDecimal.h>
+#include <DataTypes/DataTypeString.h>
 #include <DataTypes/ObjectUtils.h>
 #include <Common/Exception.h>
 
@@ -387,33 +388,60 @@ std::unique_ptr<SparkRowInfo> CHColumnToSparkRow::convertCHColumnToSparkRow(cons
     {
         nested_col = nullable_col->getNestedColumnPtr();
     }
-    std::unique_ptr<SparkRowInfo> spark_row_info;
-    DB::ColumnsWithTypeAndName columns;
-    if (nested_col->getDataType() == DB::TypeIndex::Tuple)
+
+    auto checkAndGetTupleDataTypes = [] (const DB::ColumnPtr& column) -> DB::DataTypes
     {
-        const auto * tuple_col = checkAndGetColumn<DB::ColumnTuple>(nested_col.get());
-        const size_t col_size = tuple_col->tupleSize();
-        const size_t row_size = block.rows();
         DB::DataTypes data_types;
+        if (column->getDataType() != DB::TypeIndex::Tuple)
+        {
+            return data_types;
+        }
+        const auto * tuple_col = checkAndGetColumn<DB::ColumnTuple>(column.get());
+        const size_t col_size = tuple_col->tupleSize();
         for (size_t i = 0; i < col_size; i++)
         {
+            DB::DataTypePtr field_type;
             const auto & field_col = tuple_col->getColumn(i);
-            DataTypePtr field_type;
             if (field_col.isNullable())
             {
                 const auto & field_nested_col= assert_cast<const ColumnNullable &>(field_col).getNestedColumn();
-                DataTypePtr field_nested_type = getDataTypeByColumn(field_nested_col);
-                field_type = std::make_shared<DB::DataTypeNullable>(field_nested_type);
+                if (field_nested_col.getDataType() != DB::TypeIndex::String)
+                {
+                    data_types.clear();
+                    return data_types;
+                }
+                else
+                {
+                    DataTypePtr string_type = std::make_shared<DB::DataTypeString>();
+                    field_type = std::make_shared<DB::DataTypeNullable>(string_type);
+                }
+            }
+            else if (field_col.getDataType() == DB::TypeIndex::String)
+            {
+                field_type = std::make_shared<DB::DataTypeString>();
             }
             else
             {
-                field_type = getDataTypeByColumn(field_col);
+                data_types.clear();
+                return data_types;
             }
-            DB::ColumnWithTypeAndName col_type_name(tuple_col->getColumnPtr(i), field_type, "c" + std::to_string(i));
-            columns.emplace_back(col_type_name);
             data_types.emplace_back(field_type);
         }
-        spark_row_info = std::make_unique<SparkRowInfo>(columns, data_types, col_size, row_size);
+        return data_types;
+    };
+
+    std::unique_ptr<SparkRowInfo> spark_row_info;
+    DB::ColumnsWithTypeAndName columns;
+    auto data_types = checkAndGetTupleDataTypes(nested_col);
+    if (data_types.size() > 0)
+    {
+        const auto * tuple_col = checkAndGetColumn<DB::ColumnTuple>(nested_col.get());
+        for (size_t i = 0; i < tuple_col->tupleSize(); i++)
+        {
+            DB::ColumnWithTypeAndName col_type_name(tuple_col->getColumnPtr(i), data_types[i], "c" + std::to_string(i));
+            columns.emplace_back(col_type_name);
+        }
+        spark_row_info = std::make_unique<SparkRowInfo>(columns, data_types, tuple_col->tupleSize(), block.rows());
     }
     else
     {
