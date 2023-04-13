@@ -7,6 +7,14 @@
 #include <Poco/Logger.h>
 #include <Common/logger_useful.h>
 
+namespace DB
+{
+namespace ErrorCodes
+{
+    extern const int LOGICAL_ERROR;
+}
+}
+
 namespace local_engine
 {
 jclass CreateGlobalExceptionClassReference(JNIEnv *env, const char *class_name);
