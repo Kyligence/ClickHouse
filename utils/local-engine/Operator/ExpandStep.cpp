@@ -59,21 +59,7 @@ DB::Block ExpandStep::buildOutputHeader(
     for (size_t i = 0; i < input_header.columns(); ++i)
     {
         const auto & old_col = input_header.getByPosition(i);
-        if (i < aggregating_expressions_columns_.size())
-        {
-            // do nothing with the aggregating columns.
-            cols.push_back(old_col);
-            continue;
-        }
-        if (old_col.type->isNullable())
-            cols.push_back(old_col);
-        else
-        {
-            auto null_map = DB::ColumnUInt8::create(0, 0);
-            auto null_col = DB::ColumnNullable::create(old_col.column, std::move(null_map));
-            auto null_type = std::make_shared<DB::DataTypeNullable>(old_col.type);
-            cols.push_back(DB::ColumnWithTypeAndName(null_col, null_type, old_col.name));
-        }
+        cols.push_back(old_col);
     }
 
     // add group id column
