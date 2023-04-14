@@ -12,5 +12,6 @@ class StringUtils
 public:
     static PartitionValues parsePartitionTablePath(const std::string & file);
     static bool isNullPartitionValue(const std::string & value);
+    static std::string toLowerCase(const std::string & value);
 };
 }
