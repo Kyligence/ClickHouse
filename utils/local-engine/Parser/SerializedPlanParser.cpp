@@ -734,8 +734,9 @@ QueryPlanPtr SerializedPlanParser::parseOp(const substrait::Rel & rel, std::list
             }
 
             auto input = query_plan->getCurrentDataStream().header.getNames();
-            Names input_with_condition(input);
-            input_with_condition.emplace_back(filter_name);
+            NameSet input_with_condition(input.begin(), input.end());
+            input_with_condition.insert(filter_name);
+            input_with_condition.insert(required_columns.begin(), required_columns.end());
             actions_dag->removeUnusedActions(input_with_condition);
             auto filter_step = std::make_unique<FilterStep>(query_plan->getCurrentDataStream(), actions_dag, filter_name, true);
             query_plan->addStep(std::move(filter_step));
@@ -1467,6 +1468,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
     {
         if (function_name == "isNotNull")
         {
+            actions_dag->addOrReplaceInOutputs(*args[0]);
             required_columns.emplace_back(args[0]->result_name);
         }
         else if (function_name == "splitByRegexp")
@@ -2150,7 +2152,14 @@ const ActionsDAG::Node * SerializedPlanParser::parseExpression(ActionsDAGPtr act
 QueryPlanPtr SerializedPlanParser::parse(const std::string & plan)
 {
     auto plan_ptr = std::make_unique<substrait::Plan>();
-    auto ok = plan_ptr->ParseFromString(plan);
+    /// https://stackoverflow.com/questions/52028583/getting-error-parsing-protobuf-data
+    /// Parsing may fail when the number of recursive layers is large.
+    /// Here, set a limit large enough to avoid this problem.
+    /// Once this problem occurs, it is difficult to troubleshoot, because the pb of c++ will not provide any valid information
+    google::protobuf::io::CodedInputStream coded_in(reinterpret_cast<const uint8_t *>(plan.data()), plan.size());
+    coded_in.SetRecursionLimit(100000);
+
+    auto ok = plan_ptr->ParseFromCodedStream(&coded_in);
     if (!ok)
         throw Exception(ErrorCodes::CANNOT_PARSE_PROTOBUF_SCHEMA, "Parse substrait::Plan from string failed");
 
