@@ -92,14 +92,7 @@ void ExpandTransform::work()
             }
             else
             {
-                if (original_col->isNullable())
-                    cols.push_back(original_col);
-                else
-                {
-                    auto null_map = DB::ColumnUInt8::create(rows, 0);
-                    auto col = DB::ColumnNullable::create(original_col, std::move(null_map));
-                    cols.push_back(std::move(col));
-                }
+                cols.push_back(original_col);
             }
         }
         auto id_col = DB::DataTypeInt64().createColumnConst(input_chunk.getNumRows(), set_id);
