@@ -1539,7 +1539,7 @@ const ActionsDAG::Node * SerializedPlanParser::parseFunctionWithDAG(
                 SerializedPlanParser::parseType(rel.scalar_function().output_type())->getName(),
                 function_node->result_name);
         }
-        if (function_name == "JSON_VALUE")
+        if (function_name == "get_json_object")
         {
             result_node->function->setResolver(function_builder);
         }
