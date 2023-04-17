@@ -249,7 +249,28 @@ void ColumnsBuffer::add(DB::Block & block, int start, int end)
     }
     assert(!accumulated_columns.empty());
     for (size_t i = 0; i < block.columns(); ++i)
-        accumulated_columns[i]->insertRangeFrom(*block.getByPosition(i).column, start, end - start);
+	{
+        // for union, the columns type may be different for the two steam, one is nullable, the other not.
+        std::string l_name = typeid(*accumulated_columns[i]).name();
+        std::string r_name = typeid(*block.getByPosition(i).column).name();
+        if (l_name.compare(r_name) == 0) {
+            accumulated_columns[i]->insertRangeFrom(*block.getByPosition(i).column, start, end - start);
+        }
+        else
+        {
+            if (r_name.find("ColumnNullable") != std::string::npos)
+            {
+                const DB::ColumnNullable & column_nullable = dynamic_cast<const DB::ColumnNullable &>(*block.getByPosition(i).column);
+                accumulated_columns[i]->insertRangeFrom(column_nullable.getNestedColumn(), start, end - start);
+            }
+            else
+            {
+                DB::ColumnNullable & column_nullable = dynamic_cast<DB::ColumnNullable &>(*accumulated_columns[i]);
+                column_nullable.getNestedColumn().insertRangeFrom(*block.getByPosition(i).column, start, end - start);
+                column_nullable.getNullMapColumn().insertRangeFrom(*ColumnUInt8::create(end, UInt8(0)), start, end - start);
+            }
+        }
+    }
 }
 
 void ColumnsBuffer::appendSelective(size_t column_idx, const DB::Block & source, const DB::IColumn::Selector & selector, size_t from, size_t length)
