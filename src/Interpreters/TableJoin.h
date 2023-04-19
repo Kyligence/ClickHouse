@@ -273,6 +273,8 @@ public:
     void setKind(JoinKind kind) { table_join.kind = kind; }
     JoinStrictness strictness() const { return table_join.strictness; }
     bool sameStrictnessAndKind(JoinStrictness, JoinKind) const;
+    void setStrictness(JoinStrictness strictness) { table_join.strictness = strictness; }
+    void setColumnsFromJoinedTable(NamesAndTypesList columns_from_joined_table_) {columns_from_joined_table = columns_from_joined_table_;}
     const SizeLimits & sizeLimits() const { return size_limits; }
     size_t getMaxMemoryUsage() const;
 
