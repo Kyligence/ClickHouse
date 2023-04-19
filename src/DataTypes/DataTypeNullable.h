@@ -42,6 +42,7 @@ public:
     bool canBeInsideLowCardinality() const override { return nested_data_type->canBeInsideLowCardinality(); }
     bool canBePromoted() const override { return nested_data_type->canBePromoted(); }
     ColumnPtr createColumnConst(size_t size, const Field & field) const override;
+    bool canBeInsideNullable() const override { return true; }
 
     const DataTypePtr & getNestedType() const { return nested_data_type; }
 
