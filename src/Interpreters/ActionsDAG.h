@@ -447,6 +447,7 @@ private:
     Node & addNode(Node node);
 
     const Node & addFunctionImpl(
+        const FunctionOverloadResolverPtr & function,
         const FunctionBasePtr & function_base,
         NodeRawConstPtrs children,
         ColumnsWithTypeAndName arguments,
