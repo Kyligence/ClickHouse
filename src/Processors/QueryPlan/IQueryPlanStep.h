@@ -110,6 +110,11 @@ public:
     void updateInputHeaders(Headers input_headers_);
     void updateInputHeader(Header input_header, size_t idx = 0);
 
+    virtual const Processors & getProcessors() const
+    {
+        return processors;
+    }
+
     virtual bool hasCorrelatedExpressions() const;
 
 protected:
