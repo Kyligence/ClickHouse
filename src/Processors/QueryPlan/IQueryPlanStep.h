@@ -135,6 +135,11 @@ public:
 
     virtual bool canUpdateInputStream() const { return false; }
 
+    virtual const Processors & getProcessors() const
+    {
+        return processors;
+    }
+
 protected:
     virtual void updateOutputStream() { throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Not implemented"); }
 
