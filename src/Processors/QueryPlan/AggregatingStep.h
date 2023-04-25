@@ -74,6 +74,11 @@ public:
         UInt64 group,
         bool group_by_use_nulls);
 
+    const Processors & getProcessors() const override
+    {
+        return aggregating;
+    }
+
 private:
     void updateOutputHeader() override;
 
