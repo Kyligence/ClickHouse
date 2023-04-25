@@ -101,6 +101,11 @@ public:
 
     virtual bool canUpdateInputHeader() const { return false; }
 
+    virtual const Processors & getProcessors() const
+    {
+        return processors;
+    }
+
 protected:
     virtual void updateOutputHeader() { throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Not implemented"); }
 
