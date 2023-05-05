@@ -111,7 +111,7 @@ AggregateFunctionPtr createAggregateFunctionGroupUniqArray(
 
 void registerAggregateFunctionGroupUniqArray(AggregateFunctionFactory & factory)
 {
-    AggregateFunctionProperties properties = { .returns_default_when_only_null = false, .is_order_dependent = true };
+    AggregateFunctionProperties properties = { .returns_default_when_only_null = true, .is_order_dependent = true };
 
     factory.registerFunction("groupUniqArray", { createAggregateFunctionGroupUniqArray, properties });
 }
