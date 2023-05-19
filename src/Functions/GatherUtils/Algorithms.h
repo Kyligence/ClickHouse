@@ -381,6 +381,10 @@ static void sliceDynamicOffsetBoundedImpl(Source && src, Sink && sink, const ICo
         Int64 offset = has_offset ? offset_nested_column->getInt(row_num) : 1;
         Int64 size = has_length ? length_nested_column->getInt(row_num) : static_cast<Int64>(src.getElementSize());
 
+        if(offset==0){
+            offset=1;
+        }
+
         if (size < 0)
             size += offset > 0 ? static_cast<Int64>(src.getElementSize()) - (offset - 1) : -UInt64(offset);
 

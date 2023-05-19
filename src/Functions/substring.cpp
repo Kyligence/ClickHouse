@@ -84,6 +84,10 @@ public:
     {
         auto col_res = ColumnString::create();
 
+        if(start_value==0){
+            start_value=1;
+        }
+
         if (!column_length)
         {
             if (column_start_const)
