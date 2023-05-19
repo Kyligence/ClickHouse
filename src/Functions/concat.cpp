@@ -50,13 +50,6 @@ public:
 
     DataTypePtr getReturnTypeImpl(const DataTypes & arguments) const override
     {
-        if (arguments.size() < 2)
-            throw Exception(
-                ErrorCodes::NUMBER_OF_ARGUMENTS_DOESNT_MATCH,
-                "Number of arguments for function {} doesn't match: passed {}, should be at least 2",
-                getName(),
-                arguments.size());
-
         for (const auto arg_idx : collections::range(0, arguments.size()))
         {
             const auto * arg = arguments[arg_idx].get();
@@ -117,7 +110,6 @@ private:
     ColumnPtr executeFormatImpl(const ColumnsWithTypeAndName & arguments, size_t input_rows_count) const
     {
         const size_t num_arguments = arguments.size();
-        assert(num_arguments >= 2);
 
         auto c_res = ColumnString::create();
         std::vector<const ColumnString::Chars *> data(num_arguments);
@@ -201,7 +193,7 @@ public:
 
     FunctionBasePtr buildImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & return_type) const override
     {
-        if (isArray(arguments.at(0).type))
+        if (!arguments.empty() && isArray(arguments.at(0).type))
         {
             return FunctionFactory::instance().getImpl("arrayConcat", context)->build(arguments);
         }
@@ -210,12 +202,9 @@ public:
                 FunctionConcat::create(context), collections::map<DataTypes>(arguments, [](const auto & elem) { return elem.type; }), return_type);
     }
 
-    DataTypePtr getReturnTypeImpl(const DataTypes & arguments) const override
+    DataTypePtr getReturnTypeImpl(const DataTypes & ) const override
     {
-        if (arguments.size() < 2)
-            throw Exception(ErrorCodes::NUMBER_OF_ARGUMENTS_DOESNT_MATCH,
-                "Number of arguments for function {} doesn't match: passed {}, should be at least 2.",
-                getName(), arguments.size());
+
 
         /// We always return Strings from concat, even if arguments were fixed strings.
         return std::make_shared<DataTypeString>();
