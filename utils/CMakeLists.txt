@@ -9,12 +9,13 @@ if (ENABLE_CLICKHOUSE_SELF_EXTRACTING)
     add_subdirectory (self-extracting-executable)
 endif ()
 
+if (ENABLE_EXTERN_LOCAL_ENGINE)
+    add_subdirectory (extern-local-engine)
+endif ()
+
 # Not used in packages
 if (ENABLE_UTILS)
     add_subdirectory (compressor)
-    if (ENABLE_EXTERN_LOCAL_ENGINE)
-        add_subdirectory (extern-local-engine)
-    endif()
 #    add_subdirectory (iotest)
     add_subdirectory (corrector_utf8)
     add_subdirectory (zookeeper-cli)
