@@ -17,6 +17,8 @@
 #include <aws/core/endpoint/EndpointParameter.h>
 #include <aws/core/utils/HashingUtils.h>
 #include <aws/core/utils/logging/ErrorMacros.h>
+#include <aws/sts/STSClient.h>
+#include <aws/identity-management/auth/STSAssumeRoleCredentialsProvider.h>
 
 #include <Poco/Net/NetException.h>
 
@@ -1106,10 +1108,27 @@ std::unique_ptr<S3::Client> ClientFactory::create( // NOLINT
             credentials_configuration);
 
     if (!credentials_configuration.role_arn.empty())
-        credentials_provider = std::make_shared<AwsAuthSTSAssumeRoleCredentialsProvider>(credentials_configuration.role_arn,
-            credentials_configuration.role_session_name, credentials_configuration.expiration_window_seconds,
-            std::move(credentials_provider), client_configuration, credentials_configuration.sts_endpoint_override);
-
+    {
+        if (!credentials_configuration.external_id.empty())
+        {
+            credentials_provider = std::make_shared<AwsAuthSTSAssumeRoleCredentialsProvider>(credentials_configuration.role_arn,
+                credentials_configuration.role_session_name, credentials_configuration.expiration_window_seconds,
+                std::move(credentials_provider), client_configuration, credentials_configuration.sts_endpoint_override);
+        }
+        else
+        {
+            // why set to empty? because client_configuration's endpointOverride is pointed to a s3 endpoint, whereas we
+            // expect are going to visit a sts endpoint.
+            client_configuration.endpointOverride = "";
+            const auto client = std::make_shared<Aws::STS::STSClient>(credentials_provider, client_configuration);
+            credentials_provider = std::make_shared<Aws::Auth::STSAssumeRoleCredentialsProvider>(
+                credentials_configuration.role_arn,
+                credentials_configuration.role_session_name,
+                credentials_configuration.external_id,
+                Aws::Auth::DEFAULT_CREDS_LOAD_FREQ_SECONDS,
+                client);
+        }
+    }
     /// Disable per-thread retry loops if global retry coordination is in use.
     if (client_configuration.s3_slow_all_threads_after_retryable_error)
     {
