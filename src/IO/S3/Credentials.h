@@ -187,6 +187,9 @@ struct CredentialsConfiguration
     std::string role_session_name{};
     std::string sts_endpoint_override{};
     std::string kms_role_arn{};
+    
+    // STS Assume Role external id related   
+    std::string external_id{};
 };
 
 class S3CredentialsProviderChain : public Aws::Auth::AWSCredentialsProviderChain
