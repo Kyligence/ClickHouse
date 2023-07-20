@@ -1086,10 +1086,7 @@ static ColumnWithTypeAndName readColumnFromArrowColumn(
 {
     bool read_as_nullable_column = arrow_column->null_count() || is_nullable_column || (type_hint && type_hint->isNullable());
     if (read_as_nullable_column &&
-        arrow_column->type()->id() != arrow::Type::LIST &&
         arrow_column->type()->id() != arrow::Type::LARGE_LIST &&
-        arrow_column->type()->id() != arrow::Type::MAP &&
-        arrow_column->type()->id() != arrow::Type::STRUCT &&
         arrow_column->type()->id() != arrow::Type::DICTIONARY)
     {
         DataTypePtr nested_type_hint;
