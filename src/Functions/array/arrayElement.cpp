@@ -1176,7 +1176,11 @@ ColumnPtr FunctionArrayElement::perform(const ColumnsWithTypeAndName & arguments
 {
     ColumnPtr res;
     if ((res = executeTuple(arguments, input_rows_count)))
+    {
+        if (builder)
+            builder.initSink(input_rows_count);
         return res;
+    }
     else if (!isColumnConst(*arguments[1].column))
     {
         if (!((res = executeArgument<UInt8>(arguments, result_type, builder, input_rows_count))
