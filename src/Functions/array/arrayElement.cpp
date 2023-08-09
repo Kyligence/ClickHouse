@@ -1167,7 +1167,7 @@ ColumnPtr FunctionArrayElement::executeImpl(const ColumnsWithTypeAndName & argum
         auto res = perform(source_columns, tmp_ret_type, builder, input_rows_count);
 
         /// Store the result.
-        return ColumnNullable::create(res, builder ? std::move(builder).getNullMapColumnPtr() : ColumnUInt8::create());
+        return makeNullable(res);
     }
 }
 
