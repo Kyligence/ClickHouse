@@ -2113,9 +2113,25 @@ ColumnPtr FunctionArrayElement<mode>::perform(
 {
     ColumnPtr res;
     if ((res = executeTuple(arguments, input_rows_count)))
+    {
+        if (builder)
+        {
+            builder.initSink(input_rows_count);
+            for (size_t i = 0; i < input_rows_count; ++i)
+                builder.update(i);
+        }
         return res;
+    }
     if ((res = executeMap2(arguments, input_rows_count)))
+    {
+        if (builder)
+        {
+            builder.initSink(input_rows_count);
+            for (size_t i = 0; i < input_rows_count; ++i)
+                builder.update(i);
+        }
         return res;
+    }
     if (!isColumnConst(*arguments[1].column))
     {
         if (!((res = executeArgument<UInt8>(arguments, result_type, builder, input_rows_count))
