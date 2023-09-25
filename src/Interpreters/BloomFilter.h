@@ -56,6 +56,10 @@ public:
     UInt64 isEmpty() const;
 
     friend bool operator== (const BloomFilter & a, const BloomFilter & b);
+
+    size_t getSize() const { return size; }
+    size_t getHashes() const { return hashes; }
+    size_t getSeed() const { return seed; }
 private:
 
     size_t size;
