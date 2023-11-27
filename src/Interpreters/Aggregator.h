@@ -1210,6 +1210,14 @@ public:
     /// Get data structure of the result.
     Block getHeader(bool final) const;
 
+    Block convertToSingleBlock(AggregatedDataVariants & data_variants, bool final) const
+    {
+        if (data_variants.type == AggregatedDataVariants::Type::without_key)
+            return prepareBlockAndFillWithoutKey(data_variants, final, false);
+        else
+            return prepareBlockAndFillSingleLevel<true>(data_variants, final);
+    }
+
 private:
 
     friend struct AggregatedDataVariants;
