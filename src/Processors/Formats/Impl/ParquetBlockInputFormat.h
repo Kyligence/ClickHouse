@@ -7,6 +7,9 @@
 #include <Formats/FormatSettings.h>
 #include <Storages/MergeTree/KeyCondition.h>
 
+#include <parquet/column_reader.h>
+#include <parquet/file_reader.h>
+
 namespace parquet { class FileMetaData; }
 namespace parquet::arrow { class FileReader; }
 namespace arrow { class Buffer; class RecordBatchReader;}
@@ -72,6 +75,7 @@ private:
         is_stopped = 1;
     }
 
+    void applyRowRangesFromPageIndex(const std::unique_ptr<parquet::ParquetFileReader> & parquet_reader, int row_group);
     void initializeIfNeeded();
     void initializeRowGroupBatchReader(size_t row_group_batch_idx);
 
@@ -208,6 +212,7 @@ private:
         size_t total_bytes_compressed = 0;
 
         std::vector<int> row_groups_idxs;
+        std::map<int, parquet::RowRangesPtr> row_ranges_map;
 
         // These are only used by the decoding thread, so don't require locking the mutex.
         std::unique_ptr<parquet::arrow::FileReader> file_reader;
