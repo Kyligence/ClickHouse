@@ -92,6 +92,8 @@ add_contrib (libarchive-cmake libarchive)
 
 add_contrib (corrosion-cmake corrosion)
 
+add_contrib (libmaxminddb-cmake libmaxminddb)
+
 if (ENABLE_FUZZING)
     add_contrib (libprotobuf-mutator-cmake libprotobuf-mutator)
 endif()
