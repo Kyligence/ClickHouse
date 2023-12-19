@@ -176,5 +176,8 @@ endif()
 if (TARGET ch_contrib::pocketfft)
     set(USE_POCKETFFT 1)
 endif()
+if (TARGET ch_contrib::maxminddb)
+    set(USE_MAXMINDDB 1)
+endif()
 
 set(SOURCE_DIR ${PROJECT_SOURCE_DIR})
