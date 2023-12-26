@@ -1299,6 +1299,7 @@ private:
     friend class ConvertingAggregatedToChunksSource;
     friend class ConvertingAggregatedToChunksWithMergingSource;
     friend class AggregatingInOrderTransform;
+    friend class GlutenAggregatorUtil;
 
     /// Data structure of source blocks.
     Block header;
