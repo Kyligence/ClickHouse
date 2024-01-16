@@ -151,6 +151,7 @@ struct FormatSettings
         char delimiter = ',';
         bool allow_single_quotes = true;
         bool allow_double_quotes = true;
+        bool default_empty_for_nullable_string = false;
         bool empty_as_default = false;
         bool crlf_end_of_line = false;
         bool allow_cr_end_of_line = false;
