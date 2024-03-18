@@ -120,6 +120,7 @@ private:
     const Poco::Util::AbstractConfiguration & config;
 
     HDFSBuilderWrapper hdfs_builder;
+protected:
     HDFSFSPtr hdfs_fs;
     SettingsPtr settings;
     const std::string hdfs_root_path;
