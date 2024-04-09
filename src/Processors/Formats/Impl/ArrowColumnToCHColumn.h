@@ -58,7 +58,6 @@ public:
         UInt64 dictionary_size;
     };
 
-private:
     struct ArrowColumn
     {
         std::shared_ptr<arrow::ChunkedArray> column;
@@ -73,6 +72,7 @@ private:
         std::shared_ptr<const arrow::KeyValueMetadata> metadata,
         BlockMissingValues * block_missing_values);
 
+private:
     const Block & header;
     const std::string format_name;
 
