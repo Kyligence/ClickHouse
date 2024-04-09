@@ -45,8 +45,6 @@ public:
         UInt64 dictionary_size;
     };
 
-
-private:
     struct ArrowColumn
     {
         std::shared_ptr<arrow::ChunkedArray> column;
@@ -57,6 +55,7 @@ private:
 
     Chunk arrowColumnsToCHChunk(const NameToArrowColumn & name_to_arrow_column, size_t num_rows, BlockMissingValues * block_missing_values);
 
+private:
     const Block & header;
     const std::string format_name;
     /// If false, throw exception if some columns in header not exists in arrow table.
