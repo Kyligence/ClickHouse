@@ -39,6 +39,7 @@ using DB::current_thread;
 thread_local std::function<void(Int64, bool)> CurrentMemoryTracker::before_alloc = nullptr;
 
 thread_local std::function<void(Int64)> CurrentMemoryTracker::before_free  = nullptr;
+thread_local std::function<Int64()> CurrentMemoryTracker::current_memory = nullptr;
 
 AllocationTrace CurrentMemoryTracker::allocImpl(Int64 size, bool throw_if_memory_exceeded)
 {
