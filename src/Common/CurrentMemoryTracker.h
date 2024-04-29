@@ -19,6 +19,7 @@ struct CurrentMemoryTracker
 
     static thread_local std::function<void(Int64, bool)> before_alloc;
     static thread_local std::function<void(Int64)> before_free;
+    static thread_local std::function<Int64()> current_memory;
 private:
     [[nodiscard]] static AllocationTrace allocImpl(Int64 size, bool throw_if_memory_exceeded);
 };
