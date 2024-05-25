@@ -448,7 +448,7 @@ enum AggregateFunctionSumType
 };
 /// Counts the sum of the numbers.
 template <typename T, typename TResult, typename Data, AggregateFunctionSumType Type>
-class AggregateFunctionSum final : public IAggregateFunctionDataHelper<Data, AggregateFunctionSum<T, TResult, Data, Type>>
+class AggregateFunctionSum : public IAggregateFunctionDataHelper<Data, AggregateFunctionSum<T, TResult, Data, Type>>
 {
 public:
     static constexpr bool DateTime64Supported = false;
