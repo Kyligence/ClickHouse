@@ -108,7 +108,7 @@ public:
 
     void shutdown() override { }
 
-private:
+protected:
     void initializeHDFSFS() const;
     std::string extractObjectKeyFromURL(const StoredObject & object) const;
 
