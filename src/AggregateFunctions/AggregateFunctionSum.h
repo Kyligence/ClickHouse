@@ -443,6 +443,7 @@ struct AggregateFunctionSumKahanData
 enum AggregateFunctionSumType
 {
     AggregateFunctionTypeSum,
+    AggregateFunctionTypeSum0,
     AggregateFunctionTypeSumWithOverflow,
     AggregateFunctionTypeSumKahan,
 };
@@ -459,6 +460,8 @@ public:
     {
         if constexpr (Type == AggregateFunctionTypeSum)
             return "sum";
+        else if constexpr (Type == AggregateFunctionTypeSum0)
+            return "sum0";
         else if constexpr (Type == AggregateFunctionTypeSumWithOverflow)
             return "sumWithOverflow";
         else if constexpr (Type == AggregateFunctionTypeSumKahan)
