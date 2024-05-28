@@ -3,6 +3,7 @@
 #include <Processors/IProcessor.h>
 #include <Core/SortDescription.h>
 #include <Core/SortCursor.h>
+#include <Interpreters/TemporaryDataOnDisk.h>
 #include <Processors/ISource.h>
 
 
@@ -57,6 +58,34 @@ private:
     MergeSorter merge_sorter;
 };
 
+class TemporaryFileStreamSource : public ISource
+{
+public:
+    TemporaryFileStreamSource(const Block& header, TemporaryFileStream& stream_)
+        : ISource(header),
+          stream(stream_)
+    {
+        chassert(stream.isWriteFinished());
+    }
+
+    String getName() const override { return "TemporaryFileStreamSource"; }
+
+protected:
+    Chunk generate() override
+    {
+        Block block = stream.read();
+        if (!block)
+            return {};
+
+        UInt64 num_rows = block.rows();
+        return Chunk(block.getColumns(), num_rows);
+    }
+private:
+    TemporaryFileStream& stream;
+};
+
+
+
 /** Base class for sorting.
  *  Currently there are two implementations: MergeSortingTransform and FinishSortingTransform.
  */
@@ -109,6 +138,7 @@ protected:
     Chunks chunks;
 
     std::unique_ptr<MergeSorter> merge_sorter;
+    TemporaryFileStream* temporary_file_stream = nullptr;
     Processors processors;
 
 private:
