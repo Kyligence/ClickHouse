@@ -28,6 +28,7 @@ public:
         TemporaryDataOnDiskScopePtr tmp_data = nullptr;
         size_t min_free_disk_space = 0;
         size_t max_block_bytes = 0;
+        std::function<bool()> worth_external_sort = nullptr;
 
         explicit Settings(const Context & context);
         explicit Settings(size_t max_block_size_);
