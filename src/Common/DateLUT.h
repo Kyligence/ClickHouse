@@ -18,6 +18,21 @@ using ContextPtr = std::shared_ptr<const Context>;
 
 class DateLUTImpl;
 
+static const std::unordered_map<std::string, std::string> JAVA_TIMEZONE_MAPPING
+    = {{"GMT", "Etc/GMT"}, //
+       {"GMT+1", "Etc/GMT-1"},     {"GMT+2", "Etc/GMT-2"},      {"GMT+3", "Etc/GMT-3"},      {"GMT+4", "Etc/GMT-4"},
+       {"GMT+5", "Etc/GMT-5"},     {"GMT+6", "Etc/GMT-6"},      {"GMT+7", "Etc/GMT-7"},      {"GMT+8", "Etc/GMT-8"},
+       {"GMT+9", "Etc/GMT-9"},     {"GMT+10", "Etc/GMT-10"},    {"GMT+11", "Etc/GMT-11"},    {"GMT+12", "Etc/GMT-12"}, //
+       {"GMT-1", "Etc/GMT+1"},     {"GMT-2", "Etc/GMT+2"},      {"GMT-3", "Etc/GMT+3"},      {"GMT-4", "Etc/GMT+4"},
+       {"GMT-5", "Etc/GMT+5"},     {"GMT-6", "Etc/GMT+6"},      {"GMT-7", "Etc/GMT+7"},      {"GMT-8", "Etc/GMT+8"},
+       {"GMT-9", "Etc/GMT+9"},     {"GMT-10", "Etc/GMT+10"},    {"GMT-11", "Etc/GMT+11"},    {"GMT-12", "Etc/GMT+12"}, //
+       {"GMT+00:00", "Etc/GMT"}, //
+       {"GMT+01:00", "Etc/GMT-1"}, {"GMT+02:00", "Etc/GMT-2"},  {"GMT+03:00", "Etc/GMT-3"},  {"GMT+04:00", "Etc/GMT-4"},
+       {"GMT+05:00", "Etc/GMT-5"}, {"GMT+06:00", "Etc/GMT-6"},  {"GMT+07:00", "Etc/GMT-7"},  {"GMT+08:00", "Etc/GMT-8"},
+       {"GMT+09:00", "Etc/GMT-9"}, {"GMT+10:00", "Etc/GMT-10"}, {"GMT+11:00", "Etc/GMT-11"}, {"GMT+12:00", "Etc/GMT-12"}, //
+       {"GMT-01:00", "Etc/GMT+1"}, {"GMT-02:00", "Etc/GMT+2"},  {"GMT-03:00", "Etc/GMT+3"},  {"GMT-04:00", "Etc/GMT+4"},
+       {"GMT-05:00", "Etc/GMT+5"}, {"GMT-06:00", "Etc/GMT+6"},  {"GMT-07:00", "Etc/GMT+7"},  {"GMT-08:00", "Etc/GMT+8"},
+       {"GMT-09:00", "Etc/GMT+9"}, {"GMT-10:00", "Etc/GMT+10"}, {"GMT-11:00", "Etc/GMT+11"}, {"GMT-12:00", "Etc/GMT+12"}};
 
 /// This class provides lazy initialization and lookup of singleton DateLUTImpl objects for a given timezone.
 class DateLUT : private boost::noncopyable
@@ -54,15 +69,10 @@ public:
 
     static ALWAYS_INLINE String mappingForJavaTimezone(const std::string & time_zone)
     {
-        String mapped_timezone;
-        if (time_zone.starts_with("GMT+"))
-            mapped_timezone = "Etc/GMT-" + time_zone.substr(4);
-        else if (time_zone.starts_with("GMT-"))
-            mapped_timezone = "Etc/GMT+" + time_zone.substr(4);
-        else
-            mapped_timezone = time_zone;
+        if (JAVA_TIMEZONE_MAPPING.contains(time_zone))
+            return JAVA_TIMEZONE_MAPPING.at(time_zone);
 
-        return mapped_timezone;
+        return time_zone;
     }
 
 protected:
