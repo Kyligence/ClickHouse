@@ -52,6 +52,19 @@ public:
         date_lut.default_impl.store(&impl, std::memory_order_release);
     }
 
+    static ALWAYS_INLINE String mappingForJavaTimezone(const std::string & time_zone)
+    {
+        String mapped_timezone;
+        if (time_zone.starts_with("GMT+"))
+            mapped_timezone = "Etc/GMT-" + time_zone.substr(4);
+        else if (time_zone.starts_with("GMT-"))
+            mapped_timezone = "Etc/GMT+" + time_zone.substr(4);
+        else
+            mapped_timezone = time_zone;
+
+        return mapped_timezone;
+    }
+
 protected:
     DateLUT();
 
