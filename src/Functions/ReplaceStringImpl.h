@@ -290,41 +290,47 @@ struct ReplaceStringImpl
 
             const auto * const cur_replacement_data = &replacement_data[prev_replacement_offset];
             const size_t cur_replacement_length = replacement_offsets[i] - prev_replacement_offset - 1;
+            const auto * start_pos = cur_haystack_data;
 
             if (cur_needle_length == 0)
-                throw Exception(ErrorCodes::ARGUMENT_OUT_OF_BOUND, "Length of the pattern argument in function {} must be greater than 0.", name);
-
-            /// Using "slow" "stdlib searcher instead of Volnitsky because there is a different pattern in each row
-            StdLibASCIIStringSearcher</*CaseInsensitive*/ false> searcher(cur_needle_data, cur_needle_length);
-
-            const auto * last_match = static_cast<UInt8 *>(nullptr);
-            const auto * start_pos = cur_haystack_data;
-            const auto * const cur_haystack_end = cur_haystack_data + cur_haystack_length;
-
-            while (start_pos < cur_haystack_end)
             {
-                if (const auto * const match = searcher.search(start_pos, cur_haystack_end); match != cur_haystack_end)
+                size_t bytes = cur_haystack_length + 1;
+                copyToOutput(start_pos, bytes, res_data, res_offset);
+            }
+            else
+            {
+                /// Using "slow" "stdlib searcher instead of Volnitsky because there is a different pattern in each row
+                StdLibASCIIStringSearcher</*CaseInsensitive*/ false> searcher(cur_needle_data, cur_needle_length);
+
+                const auto * last_match = static_cast<UInt8 *>(nullptr);
+
+                const auto * const cur_haystack_end = cur_haystack_data + cur_haystack_length;
+
+                while (start_pos < cur_haystack_end)
                 {
-                    /// Copy prefix before match
-                    copyToOutput(start_pos, match - start_pos, res_data, res_offset);
+                    if (const auto * const match = searcher.search(start_pos, cur_haystack_end); match != cur_haystack_end)
+                    {
+                        /// Copy prefix before match
+                        copyToOutput(start_pos, match - start_pos, res_data, res_offset);
 
-                    /// Insert replacement for match
-                    copyToOutput(cur_replacement_data, cur_replacement_length, res_data, res_offset);
+                        /// Insert replacement for match
+                        copyToOutput(cur_replacement_data, cur_replacement_length, res_data, res_offset);
 
-                    last_match = match;
-                    start_pos = match + cur_needle_length;
+                        last_match = match;
+                        start_pos = match + cur_needle_length;
 
-                    if constexpr (replace == ReplaceStringTraits::Replace::First)
+                        if constexpr (replace == ReplaceStringTraits::Replace::First)
+                            break;
+                    }
+                    else
                         break;
                 }
-                else
-                    break;
-            }
 
-            /// Copy suffix after last match
-            size_t bytes = (last_match == nullptr) ? (cur_haystack_end - cur_haystack_data + 1)
-                                                   : (cur_haystack_end - last_match - cur_needle_length + 1);
-            copyToOutput(start_pos, bytes, res_data, res_offset);
+                /// Copy suffix after last match
+                size_t bytes = (last_match == nullptr) ? (cur_haystack_end - cur_haystack_data + 1)
+                                                       : (cur_haystack_end - last_match - cur_needle_length + 1);
+                copyToOutput(start_pos, bytes, res_data, res_offset);
+            }
 
             res_offsets[i] = res_offset;
 
