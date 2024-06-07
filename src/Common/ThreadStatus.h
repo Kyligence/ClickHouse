@@ -315,10 +315,11 @@ public:
 
     void initGlobalProfiler(UInt64 global_profiler_real_time_period, UInt64 global_profiler_cpu_time_period);
 
-    void updateUntrackedMemoryLimit(Int64 current)
+    void updateUntrackedMemoryLimit(Int64 /*current*/)
     {
-        constexpr Int64 untracked_memory_ratio_bits = 4; // untracked_memory_ratio = 1.0 / (1 << untracked_memory_ratio_bits) = 1.0 / 16 = 6.25%
-        untracked_memory_limit = std::clamp<Int64>(current >> untracked_memory_ratio_bits, min_untracked_memory, max_untracked_memory);
+        /// Gluten depends on untracked_memory_limit is constant
+        // constexpr Int64 untracked_memory_ratio_bits = 4; // untracked_memory_ratio = 1.0 / (1 << untracked_memory_ratio_bits) = 1.0 / 16 = 6.25%
+        // untracked_memory_limit = std::clamp<Int64>(current >> untracked_memory_ratio_bits, min_untracked_memory, max_untracked_memory);
     }
 
 private:
