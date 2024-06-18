@@ -221,7 +221,7 @@ public:
     std::shared_ptr<const S3::Client> tryGetS3StorageClient() const override;
 #endif
 
-private:
+protected:
 
     /// Create actual disk object storage transaction for operations
     /// execution.
