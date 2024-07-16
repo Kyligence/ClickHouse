@@ -89,7 +89,7 @@ SeekableReadBufferPtr ReadBufferFromRemoteFSGather::createImplementationBuffer(c
             [=, this]() { return read_buffer_creator(/* restricted_seek */true, object); },
             settings,
             query_id,
-            object.bytes_size,
+            object.offset + object.bytes_size,
             /* allow_seeks */false,
             /* use_external_buffer */true,
             /* read_until_position */std::nullopt,
@@ -108,9 +108,13 @@ SeekableReadBufferPtr ReadBufferFromRemoteFSGather::createImplementationBuffer(c
 
     if (!buf)
         buf = read_buffer_creator(/* restricted_seek */true, object);
-
-    if (read_until_position > start_offset && read_until_position < start_offset + object.bytes_size)
-        buf->setReadUntilPosition(read_until_position - start_offset);
+    if (object.offset || (read_until_position > start_offset && read_until_position < start_offset + object.bytes_size))
+    {
+        if (read_until_position)
+            buf->setReadUntilPosition(object.offset + read_until_position - start_offset);
+        else
+            buf->setReadUntilPosition(object.offset + object.bytes_size);
+    }
 
     return buf;
 }
@@ -157,7 +161,7 @@ void ReadBufferFromRemoteFSGather::initialize()
                 current_buf = createImplementationBuffer(object, start_offset);
             }
 
-            current_buf->seek(file_offset_of_buffer_end - start_offset, SEEK_SET);
+            current_buf->seek(object.offset + file_offset_of_buffer_end - start_offset, SEEK_SET);
             return;
         }
 
@@ -211,7 +215,7 @@ bool ReadBufferFromRemoteFSGather::readImpl()
         nextimpl_working_buffer_offset = current_buf->offset();
 
         chassert(current_buf->available());
-        chassert(blobs_to_read.size() != 1 || file_offset_of_buffer_end == current_buf->getFileOffsetOfBufferEnd());
+        chassert(blobs_to_read.size() != 1 || file_offset_of_buffer_end + current_object.offset == current_buf->getFileOffsetOfBufferEnd());
     }
 
     return result;
