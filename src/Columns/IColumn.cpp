@@ -350,8 +350,11 @@ IColumnHelper<Derived, Parent>::serializeValueIntoArenaWithNull(size_t n, Arena 
         size_t sz = self.byteSizeAt(n) + 1 /* null byte */;
         memory = arena.allocContinue(sz, begin);
         *memory = 0;
-        self.serializeValueIntoMemory(n, memory + 1);
-        return {memory, sz};
+        const auto * next_pos = self.serializeValueIntoMemory(n, memory + 1);
+        size_t used_bytes = static_cast<size_t>(next_pos - memory);
+        if (used_bytes < sz)
+            arena.rollback(sz - used_bytes);
+        return {memory, used_bytes};
     }
 
     return self.serializeValueIntoArena(n, arena, begin);
