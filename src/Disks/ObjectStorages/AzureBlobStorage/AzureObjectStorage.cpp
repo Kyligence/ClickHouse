@@ -82,6 +82,7 @@ private:
             batch.emplace_back(std::make_shared<RelativePathWithMetadata>(
                 blob.Name,
                 ObjectMetadata{
+                    0,
                     static_cast<uint64_t>(blob.BlobSize),
                     Poco::Timestamp::fromEpochTime(
                         std::chrono::duration_cast<std::chrono::seconds>(
@@ -183,6 +184,7 @@ void AzureObjectStorage::listObjects(const std::string & path, RelativePathsWith
             children.emplace_back(std::make_shared<RelativePathWithMetadata>(
                 blob.Name,
                 ObjectMetadata{
+                    0,
                     static_cast<uint64_t>(blob.BlobSize),
                     Poco::Timestamp::fromEpochTime(
                         std::chrono::duration_cast<std::chrono::seconds>(
