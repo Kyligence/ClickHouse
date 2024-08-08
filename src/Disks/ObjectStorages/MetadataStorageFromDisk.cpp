@@ -134,7 +134,7 @@ StoredObjects MetadataStorageFromDisk::getStorageObjects(const std::string & pat
     objects.reserve(keys_with_meta.size());
     for (const auto & [object_key, object_meta] : keys_with_meta)
     {
-        objects.emplace_back(object_key.serialize(), path, object_meta.size_bytes);
+        objects.emplace_back(object_key.serialize(), path, object_meta.size_bytes, object_meta.offset);
     }
 
     return objects;
