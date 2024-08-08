@@ -18,6 +18,7 @@ private:
     static constexpr UInt32 VERSION_READ_ONLY_FLAG = 3;
     static constexpr UInt32 VERSION_INLINE_DATA = 4;
     static constexpr UInt32 VERSION_FULL_OBJECT_KEY = 5; /// only for reading data
+    static constexpr UInt32 VERSION_COMPACT_MULTI_FILE = 1 << 10;
 
     UInt32 version = VERSION_READ_ONLY_FLAG;
 
@@ -51,6 +52,8 @@ public:
         String metadata_file_path_);
 
     void addObject(ObjectStorageKey key, size_t size);
+
+    void addObject(ObjectStorageKey key, size_t offset, size_t size);
 
     ObjectKeyWithMetadata popLastObject();
 
