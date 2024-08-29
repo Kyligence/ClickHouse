@@ -818,10 +818,16 @@ inline void writeDateTime64FractionalText(typename DecimalType::NativeType fract
     char data[20] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'};
     static_assert(sizeof(data) >= MaxScale);
 
-    for (Int32 pos = scale - 1; pos >= 0 && fractional; --pos, fractional /= DateTime64(10))
-        data[pos] += fractional % DateTime64(10);
-
-    writeString(&data[0], static_cast<size_t>(scale), buf);
+    Int32 none_zero_pos = 0;
+    for (Int32 pos = scale - 1; pos >= 0 && fractional; --pos)
+    {
+        fractional /= DateTime64(10);
+        if (fractional != 0 && none_zero_pos == 0)
+            none_zero_pos = pos;
+        data[pos] = fractional % DateTime64(10);
+    }
+    none_zero_pos = none_zero_pos > 3 ? 6 : 3;
+    writeString(&data[0], static_cast<size_t>(none_zero_pos), buf);
 }
 
 static const char digits100[201] =
@@ -960,7 +966,7 @@ inline void writeDateTimeText(DateTime64 datetime64, UInt32 scale, WriteBuffer &
 
     writeDateTimeText<date_delimeter, time_delimeter, between_date_time_delimiter>(LocalDateTime(components.whole, time_zone), buf);
 
-    if (scale > 0)
+    if (scale > 0 && components.fractional != 0)
     {
         buf.write(fractional_time_delimiter);
         writeDateTime64FractionalText<DateTime64>(components.fractional, scale, buf);
