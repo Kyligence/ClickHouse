@@ -1406,9 +1406,11 @@ struct ConvertImpl
                 offsets_to.resize(size);
 
                 WriteBufferFromVector<ColumnString::Chars> write_buffer(data_to);
-                const auto & type = static_cast<const FromDataType &>(*col_with_type_and_name.type);
+                const FromDataType & type = static_cast<const FromDataType &>(*col_with_type_and_name.type);
 
                 ColumnUInt8::MutablePtr null_map = copyNullMap(datetime_arg.column);
+                const DB::ContextPtr query_context = DB::CurrentThread::get().getQueryContext();
+                bool trim_suffix_zeros = query_context->getSettingsRef().datetime64_trim_suffix_zeros.value;
 
                 if (!null_map && arguments.size() > 1)
                     null_map = copyNullMap(arguments[1].column->convertToFullColumnIfConst());
@@ -1424,7 +1426,11 @@ struct ConvertImpl
                             else
                                 throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Provided time zone must be non-empty");
                         }
-                        bool is_ok = FormatImpl<FromDataType>::template execute<bool>(vec_from[i], write_buffer, &type, time_zone);
+                        bool is_ok = true;
+                        if constexpr (std::is_same_v<FromDataType, DataTypeDateTime64>)
+                            writeDateTimeText(DateTime64(vec_from[i]), type.getScale(), write_buffer, *time_zone, trim_suffix_zeros);
+                        else
+                            is_ok = FormatImpl<FromDataType>::template execute<bool>(vec_from[i], write_buffer, &type, time_zone);
                         null_map->getData()[i] |= !is_ok;
                         writeChar(0, write_buffer);
                         offsets_to[i] = write_buffer.count();
@@ -1441,7 +1447,10 @@ struct ConvertImpl
                             else
                                 throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Provided time zone must be non-empty");
                         }
-                        FormatImpl<FromDataType>::template execute<void>(vec_from[i], write_buffer, &type, time_zone);
+                        if constexpr (std::is_same_v<FromDataType, DataTypeDateTime64>)
+                            writeDateTimeText(DateTime64(vec_from[i]), type.getScale(), write_buffer, *time_zone, trim_suffix_zeros);
+                        else
+                            FormatImpl<FromDataType>::template execute<bool>(vec_from[i], write_buffer, &type, time_zone);
                         writeChar(0, write_buffer);
                         offsets_to[i] = write_buffer.count();
                     }

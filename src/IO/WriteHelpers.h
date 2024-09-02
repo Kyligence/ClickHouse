@@ -811,7 +811,7 @@ void writeIPv4Text(const IPv4 & ip, WriteBuffer & buf);
 void writeIPv6Text(const IPv6 & ip, WriteBuffer & buf);
 
 template <typename DecimalType>
-inline void writeDateTime64FractionalText(typename DecimalType::NativeType fractional, UInt32 scale, WriteBuffer & buf)
+inline void writeDateTime64FractionalText(typename DecimalType::NativeType fractional, UInt32 scale, WriteBuffer & buf, bool trim_suffix_zeros = false)
 {
     static constexpr UInt32 MaxScale = DecimalUtils::max_precision<DecimalType>;
 
@@ -826,8 +826,10 @@ inline void writeDateTime64FractionalText(typename DecimalType::NativeType fract
             none_zero_pos = pos;
         data[pos] = fractional % DateTime64(10);
     }
-    none_zero_pos = none_zero_pos > 3 ? 6 : 3;
-    writeString(&data[0], static_cast<size_t>(none_zero_pos), buf);
+    Int32 new_scale = trim_suffix_zeros
+        ? none_zero_pos > 3 ? 6 : 3
+        : scale;
+    writeString(&data[0], static_cast<size_t>(new_scale), buf);
 }
 
 static const char digits100[201] =
@@ -941,7 +943,8 @@ inline void writeDateTimeText(time_t datetime, WriteBuffer & buf, const DateLUTI
 
 /// In the format YYYY-MM-DD HH:MM:SS.NNNNNNNNN, according to the specified time zone.
 template <char date_delimeter = '-', char time_delimeter = ':', char between_date_time_delimiter = ' ', char fractional_time_delimiter = '.'>
-inline void writeDateTimeText(DateTime64 datetime64, UInt32 scale, WriteBuffer & buf, const DateLUTImpl & time_zone = DateLUT::instance())
+inline void writeDateTimeText(DateTime64 datetime64, UInt32 scale, WriteBuffer & buf,
+                              const DateLUTImpl & time_zone = DateLUT::instance(), bool trim_suffix_zero = false)
 {
     static constexpr UInt32 MaxScale = DecimalUtils::max_precision<DateTime64>;
     scale = scale > MaxScale ? MaxScale : scale;
@@ -965,11 +968,13 @@ inline void writeDateTimeText(DateTime64 datetime64, UInt32 scale, WriteBuffer &
     }
 
     writeDateTimeText<date_delimeter, time_delimeter, between_date_time_delimiter>(LocalDateTime(components.whole, time_zone), buf);
-
-    if (scale > 0 && components.fractional != 0)
+    if (components.fractional == 0 && trim_suffix_zero) {
+        return;
+    }
+    if (scale > 0)
     {
         buf.write(fractional_time_delimiter);
-        writeDateTime64FractionalText<DateTime64>(components.fractional, scale, buf);
+        writeDateTime64FractionalText<DateTime64>(components.fractional, scale, buf, trim_suffix_zero);
     }
 }
 
