@@ -810,26 +810,32 @@ inline void writeUUIDText(const UUID & uuid, WriteBuffer & buf)
 void writeIPv4Text(const IPv4 & ip, WriteBuffer & buf);
 void writeIPv6Text(const IPv6 & ip, WriteBuffer & buf);
 
-template <typename DecimalType>
-inline void writeDateTime64FractionalText(typename DecimalType::NativeType fractional, UInt32 scale, WriteBuffer & buf, bool trim_suffix_zeros = false)
+template <typename DecimalType, bool trim_suffix_zeros = false>
+inline void writeDateTime64FractionalText(typename DecimalType::NativeType fractional, UInt32 scale, WriteBuffer & buf)
 {
     static constexpr UInt32 MaxScale = DecimalUtils::max_precision<DecimalType>;
 
     char data[20] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'};
     static_assert(sizeof(data) >= MaxScale);
 
-    Int32 none_zero_pos = 0;
-    for (Int32 pos = scale - 1; pos >= 0 && fractional; --pos)
+    for (Int32 pos = scale - 1; pos >= 0 && fractional; --pos, fractional /= DateTime64(10))
     {
-        fractional /= DateTime64(10);
-        if (fractional != 0 && none_zero_pos == 0)
-            none_zero_pos = pos;
-        data[pos] = fractional % DateTime64(10);
+        data[pos] += fractional % DateTime64(10);
     }
-    Int32 new_scale = trim_suffix_zeros
-        ? none_zero_pos > 3 ? 6 : 3
-        : scale;
-    writeString(&data[0], static_cast<size_t>(new_scale), buf);
+    if constexpr (trim_suffix_zeros) {
+        UInt32 last_none_zero_pos = 0;
+        for (UInt32 pos = 0; pos < scale; ++pos)
+        {
+            if (data[pos] != '0')
+            {
+                last_none_zero_pos = pos;
+            }
+        }
+        size_t new_scale = (last_none_zero_pos > 3 ? 6 : 3);
+        writeString(&data[0], new_scale, buf);
+    } else {
+        writeString(&data[0], static_cast<size_t>(scale), buf);
+    }
 }
 
 static const char digits100[201] =
@@ -942,9 +948,13 @@ inline void writeDateTimeText(time_t datetime, WriteBuffer & buf, const DateLUTI
 }
 
 /// In the format YYYY-MM-DD HH:MM:SS.NNNNNNNNN, according to the specified time zone.
-template <char date_delimeter = '-', char time_delimeter = ':', char between_date_time_delimiter = ' ', char fractional_time_delimiter = '.'>
-inline void writeDateTimeText(DateTime64 datetime64, UInt32 scale, WriteBuffer & buf,
-                              const DateLUTImpl & time_zone = DateLUT::instance(), bool trim_suffix_zero = false)
+template <
+    char date_delimeter = '-',
+    char time_delimeter = ':',
+    char between_date_time_delimiter = ' ',
+    char fractional_time_delimiter = '.',
+    bool trim_suffix_zeros = false>
+inline void writeDateTimeText(DateTime64 datetime64, UInt32 scale, WriteBuffer & buf, const DateLUTImpl & time_zone = DateLUT::instance())
 {
     static constexpr UInt32 MaxScale = DecimalUtils::max_precision<DateTime64>;
     scale = scale > MaxScale ? MaxScale : scale;
@@ -968,13 +978,16 @@ inline void writeDateTimeText(DateTime64 datetime64, UInt32 scale, WriteBuffer &
     }
 
     writeDateTimeText<date_delimeter, time_delimeter, between_date_time_delimiter>(LocalDateTime(components.whole, time_zone), buf);
-    if (components.fractional == 0 && trim_suffix_zero) {
-        return;
-    }
-    if (scale > 0)
-    {
-        buf.write(fractional_time_delimiter);
-        writeDateTime64FractionalText<DateTime64>(components.fractional, scale, buf, trim_suffix_zero);
+    if constexpr (trim_suffix_zeros) {
+        if (scale > 0 && components.fractional != 0) {
+            buf.write(fractional_time_delimiter);
+            writeDateTime64FractionalText<DateTime64, true>(components.fractional, scale, buf);
+        }
+    } else {
+        if (scale > 0) {
+            buf.write(fractional_time_delimiter);
+            writeDateTime64FractionalText<DateTime64, false>(components.fractional, scale, buf);
+        }
     }
 }
 

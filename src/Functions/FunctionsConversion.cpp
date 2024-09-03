@@ -522,10 +522,13 @@ struct FormatImpl<DataTypeDateTime>
 template <>
 struct FormatImpl<DataTypeDateTime64>
 {
-    template <typename ReturnType = void>
+    template <typename ReturnType = void, bool trim_suffix_zeros = false>
     static ReturnType execute(const DataTypeDateTime64::FieldType x, WriteBuffer & wb, const DataTypeDateTime64 * type, const DateLUTImpl * time_zone)
     {
-        writeDateTimeText(DateTime64(x), type->getScale(), wb, *time_zone);
+        if constexpr (trim_suffix_zeros)
+            writeDateTimeText<'-', ':', ' ', '.', true>(DateTime64(x), type->getScale(), wb, *time_zone);
+        else
+            writeDateTimeText(DateTime64(x), type->getScale(), wb, *time_zone);
         return ReturnType(true);
     }
 };
@@ -1426,11 +1429,18 @@ struct ConvertImpl
                             else
                                 throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Provided time zone must be non-empty");
                         }
-                        bool is_ok = true;
+                        bool is_ok;
                         if constexpr (std::is_same_v<FromDataType, DataTypeDateTime64>)
-                            writeDateTimeText(DateTime64(vec_from[i]), type.getScale(), write_buffer, *time_zone, trim_suffix_zeros);
+                        {
+                            if (trim_suffix_zeros)
+                                is_ok = FormatImpl<DataTypeDateTime64>::template execute<bool, true>(vec_from[i], write_buffer, &type, time_zone);
+                            else
+                                is_ok = FormatImpl<FromDataType>::template execute<bool>(vec_from[i], write_buffer, &type, time_zone);
+                        }
                         else
+                        {
                             is_ok = FormatImpl<FromDataType>::template execute<bool>(vec_from[i], write_buffer, &type, time_zone);
+                        }
                         null_map->getData()[i] |= !is_ok;
                         writeChar(0, write_buffer);
                         offsets_to[i] = write_buffer.count();
@@ -1448,9 +1458,16 @@ struct ConvertImpl
                                 throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Provided time zone must be non-empty");
                         }
                         if constexpr (std::is_same_v<FromDataType, DataTypeDateTime64>)
-                            writeDateTimeText(DateTime64(vec_from[i]), type.getScale(), write_buffer, *time_zone, trim_suffix_zeros);
+                        {
+                            if (trim_suffix_zeros)
+                                FormatImpl<DataTypeDateTime64>::template execute<bool, true>(vec_from[i], write_buffer, &type, time_zone);
+                            else
+                                FormatImpl<FromDataType>::template execute<bool>(vec_from[i], write_buffer, &type, time_zone);
+                        }
                         else
+                        {
                             FormatImpl<FromDataType>::template execute<bool>(vec_from[i], write_buffer, &type, time_zone);
+                        }
                         writeChar(0, write_buffer);
                         offsets_to[i] = write_buffer.count();
                     }
