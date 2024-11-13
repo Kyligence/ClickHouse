@@ -9,6 +9,7 @@
 #include <DataTypes/NestedUtils.h>
 #include <DataTypes/Serializations/SerializationNullable.h>
 #include <DataTypes/getLeastSupertype.h>
+#include <boost/algorithm/string/case_conv.hpp>
 
 namespace DB
 {
@@ -46,6 +47,15 @@ JSONEachRowRowInputFormat::JSONEachRowRowInputFormat(
 {
     const auto & header = getPort().getHeader();
     name_map = header.getNamesToIndexesMap();
+    if (format_settings_.json.case_insensitive_column_matching)
+    {
+        for (auto & it : name_map)
+        {
+            String key = it.first.toString();
+            boost::to_lower(key);
+            lower_case_name_map[key] = it.first;
+        }
+    }
     if (format_settings_.import_nested_json)
     {
         for (size_t i = 0; i != header.columns(); ++i)
@@ -168,7 +178,16 @@ void JSONEachRowRowInputFormat::readJSONObject(MutableColumns & columns)
             skipUnknownField(name_ref);
             continue;
         }
-        const size_t column_index = columnIndex(name_ref, key_index);
+        size_t column_index = 0;
+        if (format_settings.json.case_insensitive_column_matching)
+        {
+            String field_name = name_ref.toString();
+            boost::to_lower(field_name);
+            StringRef field_name_ref = lower_case_name_map[field_name];
+            column_index = columnIndex(field_name_ref, key_index);
+        }
+        else
+            column_index = columnIndex(name_ref, key_index);
 
         if (unlikely(ssize_t(column_index) < 0))
         {

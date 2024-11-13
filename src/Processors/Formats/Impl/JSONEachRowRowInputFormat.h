@@ -76,6 +76,9 @@ private:
     /// Hash table match `field name -> position in the block`. NOTE You can use perfect hash map.
     Block::NameMap name_map;
 
+    /// Hash table match `lower_case field name -> field name in the block`.
+    std::unordered_map<String, StringRef> lower_case_name_map;
+
     /// Cached search results for previous row (keyed as index in JSON object) - used as a hint.
     std::vector<Block::NameMap::const_iterator> prev_positions;
 
