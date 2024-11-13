@@ -244,6 +244,7 @@ struct FormatSettings
         bool ignore_unnecessary_fields = true;
         bool empty_as_default = false;
         bool type_json_skip_duplicated_paths = false;
+        bool case_insensitive_column_matching = false;
     } json{};
 
     struct

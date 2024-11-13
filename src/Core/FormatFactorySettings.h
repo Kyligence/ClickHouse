@@ -472,6 +472,7 @@ Enabled by default.
     DECLARE(Bool, input_format_json_ignore_unnecessary_fields, true, R"(
 Ignore unnecessary fields and not parse them. Enabling this may not throw exceptions on json strings of invalid format or with duplicated fields
 )", 0) \
+    DECLARE(Bool, input_format_json_case_insensitive_column_matching, false, R"(Ignore json key case while read json field from string)", 0) \
     DECLARE(Bool, input_format_try_infer_variants, false, R"(
 If enabled, ClickHouse will try to infer type [`Variant`](../../sql-reference/data-types/variant.md) in schema inference for text formats when there is more than one possible type for column/array elements.
 
