@@ -138,7 +138,7 @@ protected:
     Chunks chunks;
 
     std::unique_ptr<MergeSorter> merge_sorter;
-    TemporaryFileStream* temporary_file_stream = nullptr;
+    TemporaryBlockStreamReaderHolder temporary_file_reader;
     Processors processors;
 
 private:

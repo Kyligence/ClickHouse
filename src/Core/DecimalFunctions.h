@@ -309,7 +309,7 @@ template <typename To, typename DecimalType, typename ReturnType>
 ReturnType convertToImpl(const DecimalType & decimal, UInt32 scale, To & result)
 {
     using DecimalNativeType = typename DecimalType::NativeType;
-    // static constexpr bool throw_exception = std::is_void_v<ReturnType>;
+    static constexpr bool throw_exception = std::is_void_v<ReturnType>;
 
     if constexpr (std::is_same_v<To, BFloat16>)
     {

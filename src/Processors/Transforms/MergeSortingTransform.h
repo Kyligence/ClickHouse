@@ -64,7 +64,7 @@ private:
     /// Merge all accumulated blocks to keep no more than limit rows.
     void remerge();
 
-    size_t getAdaptiveMaxMergeSize();
+    size_t getAdaptiveMaxMergeSize() const;
 
     ProcessorPtr external_merging_sorted;
 };

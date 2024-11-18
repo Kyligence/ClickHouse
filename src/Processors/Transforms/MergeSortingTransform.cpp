@@ -227,6 +227,18 @@ void MergeSortingTransform::serialize()
         merge_sorter.reset();
 }
 
+void logTmpWriteStat(LoggerPtr log, const String& path, const TemporaryDataBuffer::Stat& stat)
+{
+    ProfileEvents::increment(ProfileEvents::ExternalProcessingCompressedBytesTotal, stat.compressed_size);
+    ProfileEvents::increment(ProfileEvents::ExternalProcessingUncompressedBytesTotal, stat.uncompressed_size);
+    ProfileEvents::increment(ProfileEvents::ExternalSortCompressedBytes, stat.compressed_size);
+    ProfileEvents::increment(ProfileEvents::ExternalSortUncompressedBytes, stat.uncompressed_size);
+
+    LOG_INFO(log, "Done writing part of data into temporary file {}, compressed {}, uncompressed {} ",
+        path,
+        ReadableSize(static_cast<double>(stat.compressed_size)), ReadableSize(static_cast<double>(stat.uncompressed_size)));
+}
+
 void MergeSortingTransform::generate()
 {
     if (!generated_prefix)
@@ -241,11 +253,12 @@ void MergeSortingTransform::generate()
             LOG_INFO(log, "There are {} temporary sorted parts to merge", temporary_files_num);
 
             size_t reserve_size = sum_bytes_in_blocks + min_free_disk_space;
-            auto & tmp_stream = tmp_data->createStream(header_without_constants, reserve_size);
+            TemporaryBlockStreamHolder tmp_stream(header_without_constants, tmp_data.get(), reserve_size);
             auto merge_sorter = MergeSorter(header_without_constants, std::move(chunks), description, getAdaptiveMaxMergeSize(), limit);
             while(auto chunk = merge_sorter.read())
-                tmp_stream.write(header_without_constants.cloneWithColumns(chunk.detachColumns()));
-            tmp_stream.finishWriting();
+                tmp_stream->write(header_without_constants.cloneWithColumns(chunk.detachColumns()));
+            auto stat = tmp_stream.finishWriting();
+            logTmpWriteStat(log, tmp_stream.getHolder()->describeFilePath(), stat);
             auto source = std::make_shared<TemporaryFileStreamSource>(header_without_constants, tmp_stream);
             processors.emplace_back(source);
         }
@@ -253,14 +266,16 @@ void MergeSortingTransform::generate()
         generated_prefix = true;
     }
 
-    if (merge_sorter && !temporary_file_stream)
+    if (merge_sorter && !temporary_file_reader.getHolder())
     {
         if (worth_external_sort && worth_external_sort())
         {
-            temporary_file_stream = &tmp_data->createStream(header_without_constants, sum_bytes_in_blocks);
+            TemporaryBlockStreamHolder temporary_file_stream(header_without_constants, tmp_data.get());
             while(auto chunk = merge_sorter->read())
                 temporary_file_stream->write(header_without_constants.cloneWithColumns(chunk.detachColumns()));
-            temporary_file_stream->finishWriting();
+            auto stat = temporary_file_stream.finishWriting();
+            logTmpWriteStat(log, temporary_file_stream.getHolder()->describeFilePath(), stat);
+            temporary_file_reader = temporary_file_stream.getReadStream();
         }
         else
         {
@@ -271,14 +286,14 @@ void MergeSortingTransform::generate()
                 enrichChunkWithConstants(generated_chunk);
         }
     }
-    if (temporary_file_stream)
+    if (temporary_file_reader.getHolder())
     {
-        auto block = temporary_file_stream->read();
+        auto block = temporary_file_reader->read();
         generated_chunk = Chunk(block.getColumns(), block.rows());
         if (!generated_chunk)
         {
             merge_sorter.reset();
-            temporary_file_stream = nullptr;
+            temporary_file_reader.reset();
         }
         else
             enrichChunkWithConstants(generated_chunk);
@@ -317,7 +332,7 @@ void MergeSortingTransform::remerge()
     sum_bytes_in_blocks = new_sum_bytes_in_blocks;
 }
 
-size_t MergeSortingTransform::getAdaptiveMaxMergeSize()
+size_t MergeSortingTransform::getAdaptiveMaxMergeSize() const
 {
     size_t max_merged_block_size = this->max_merged_block_size;
     if (max_block_bytes > 0 && sum_rows_in_blocks > 0 && sum_bytes_in_blocks > 0)
