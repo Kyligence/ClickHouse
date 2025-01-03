@@ -384,7 +384,8 @@ void SortingStep::mergeSorting(
                 sort_settings.min_external_sort_block_bytes,
                 sort_settings.max_bytes_before_external_sort / pipeline.getNumStreams(),
                 std::move(tmp_data_on_disk),
-                sort_settings.min_free_disk_space);
+                sort_settings.min_free_disk_space,
+                sort_settings.worth_external_sort);
         });
 }
 
