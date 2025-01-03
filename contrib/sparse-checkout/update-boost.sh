@@ -80,6 +80,8 @@ echo '/boost/proto/*' >> $FILES_TO_CHECKOUT
 echo '/boost/qvm/*' >> $FILES_TO_CHECKOUT
 echo '/boost/property_tree/*' >> $FILES_TO_CHECKOUT
 echo '/libs/*' >> $FILES_TO_CHECKOUT
+echo '/boost/stacktrace/*' >> $FILES_TO_CHECKOUT
+echo '/boost/compute/*' >> $FILES_TO_CHECKOUT
 
 git config core.sparsecheckout true
 git checkout $1
