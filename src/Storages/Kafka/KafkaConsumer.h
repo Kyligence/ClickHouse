@@ -78,6 +78,7 @@ public:
 
     void commit(); // Commit all processed messages.
     void subscribe(); // Subscribe internal consumer to topics.
+    void subscribe(String topic, int partition, long offset);
     void unsubscribe(); // Unsubscribe internal consumer in case of failure.
 
     auto pollTimeout() const { return poll_timeout; }
