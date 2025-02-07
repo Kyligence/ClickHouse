@@ -3,6 +3,7 @@
 #include <Formats/FormatSettings.h>
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypeFactory.h>
+#include <DataTypes/DataTypeNullable.h>
 #include <DataTypes/Serializations/SerializationArray.h>
 
 #include <Parsers/IAST.h>
