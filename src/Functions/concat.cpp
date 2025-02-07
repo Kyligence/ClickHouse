@@ -1,6 +1,7 @@
 #include <Columns/ColumnString.h>
 #include <Columns/ColumnStringHelpers.h>
 #include <DataTypes/DataTypeString.h>
+#include <DataTypes/DataTypeNullable.h>
 #include <Functions/FunctionFactory.h>
 #include <Functions/FunctionHelpers.h>
 #include <Functions/IFunctionAdaptors.h>
