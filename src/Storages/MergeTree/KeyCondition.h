@@ -161,6 +161,14 @@ public:
         DataTypePtr current_type,
         bool single_point = false);
 
+    std::optional<ActionsDAG> getFilterDagCopy() const
+    {
+        if (filter_expr)
+            return filter_expr->clone();
+        else
+            return std::nullopt;
+    }
+
     bool matchesExactContinuousRange() const;
 
     /// Extract plain ranges of the condition.
@@ -384,6 +392,7 @@ private:
     /// This flag identify whether there are filters.
     bool has_filter;
 
+    std::shared_ptr<ActionsDAG> filter_expr;
     ColumnIndices key_columns;
     std::vector<size_t> key_indices;
 
