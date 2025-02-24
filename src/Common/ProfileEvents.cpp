@@ -1042,6 +1042,13 @@ The server successfully detected this situation and will download merged part fr
     M(ParquetFetchWaitTimeMicroseconds, "Time of waiting fetching parquet data", ValueType::Microseconds) \
     M(ParquetReadRowGroups, "The total number of row groups read from parquet data", ValueType::Number) \
     M(ParquetPrunedRowGroups, "The total number of row groups pruned from parquet data", ValueType::Number) \
+    M(ParquetDecompressionTimeMicroseconds, "Time of decompress page data", ValueType::Microseconds) \
+    M(ParquetDeserializingMetaTimeMicroseconds, "Time of deserializing page header and other meta data", ValueType::Microseconds) \
+    M(ParquetFilteredRows, "rows filtered by push down filters, include skipped rows", ValueType::Number) \
+    M(ParquetSkippedRows, "rows skipped by push down filters", ValueType::Number) \
+    M(ParquetOutputRows, "parquet output rows", ValueType::Number) \
+    M(ParquetSkipPageNum, "pages skipped", ValueType::Number) \
+    \
     M(FilterTransformPassedRows, "Number of rows that passed the filter in the query", ValueType::Number) \
     M(FilterTransformPassedBytes, "Number of bytes that passed the filter in the query", ValueType::Bytes) \
     M(QueryPreempted, "How many times tasks are paused and waiting due to 'priority' setting", ValueType::Number) \
