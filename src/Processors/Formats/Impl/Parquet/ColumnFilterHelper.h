@@ -10,6 +10,7 @@ struct FilterSplitResult
 {
     ActionsDAG filter_expression;
     std::unordered_map<String, ColumnFilterPtr> filters;
+    std::unordered_map<String, DataTypePtr> conditions;
     std::unordered_map<String, ActionsDAG::NodeRawConstPtrs> fallback_filters;
     std::vector<std::shared_ptr<ExpressionFilter>> expression_filters;
 };
