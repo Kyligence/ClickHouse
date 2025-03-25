@@ -1,4 +1,7 @@
 #include "RowGroupChunkReader.h"
+
+#include <memory>
+
 #include <Columns/FilterDescription.h>
 #include <DataTypes/DataTypeNullable.h>
 #include <IO/SharedThreadPools.h>
@@ -75,7 +78,6 @@ RowGroupChunkReader::RowGroupChunkReader(
         reader_data_types.push_back(column_reader->getResultType());
         reader_columns_mapping[col_with_name.name] = column_reader;
     }
-
     // fallback filter, for example, read number data using string type, number reader doesn't support BytesValuesFilter
     std::call_once(
         parquet_reader->filter_fallback_checked,
@@ -101,7 +103,18 @@ RowGroupChunkReader::RowGroupChunkReader(
                 parquet_reader->addExpressionFilter(expr_filter);
             }
         });
-
+    if (!parquet_reader->condition_data_types.empty())
+    {
+        for (const auto& [name, data_type] : parquet_reader->condition_data_types)
+        {
+            const auto & node = context.parquet_reader->getParquetColumn(name);
+            SelectiveColumnReaderPtr column_reader;
+            column_reader = builder->buildReader(node, data_type, 0, 0);
+            column_readers.push_back(column_reader);
+            reader_data_types.push_back(column_reader->getResultType());
+            reader_columns_mapping[name] = column_reader;
+        }
+    }
     for (auto & [name, filter] : parquet_reader->filters)
     {
         if (reader_columns_mapping.contains(name))

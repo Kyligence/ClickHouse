@@ -27,6 +27,7 @@ public:
         std::vector<RowGroupPrefetchPtr> && row_group_prefetches,
         RowGroupReaderCreator && creator);
     DB::Chunk read(size_t rows);
+    DB::Chunk read_with_select_conditions(size_t rows);
 
 private:
     bool loadRowGroupChunkReaderIfNeeded();
@@ -61,6 +62,9 @@ public:
         std::shared_ptr<ThreadPool> io_pool_ = nullptr);
 
     Block read() const;
+    Block read_with_select_conditions() const;
+    std::unordered_map<String, DataTypePtr> condition_data_types;
+    void addCondations(std::unordered_map<String, DataTypePtr> conditions);
     void setSourceArrowFile(std::shared_ptr<arrow::io::RandomAccessFile> arrow_file_);
     void pushDownFilter(FilterSplitResultPtr filter_split_result);
     std::unique_ptr<RowGroupChunkReader>

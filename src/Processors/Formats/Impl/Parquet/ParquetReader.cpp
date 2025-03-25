@@ -93,6 +93,14 @@ Block ParquetReader::read() const
     return header.cloneWithColumns(chunk.detachColumns());
 }
 
+Block ParquetReader::read_with_select_conditions() const
+{
+    Chunk chunk = chunk_reader->read_with_select_conditions(max_block_size);
+    if (!chunk)
+        return header.cloneEmpty();
+    return header.cloneWithColumns(chunk.detachColumns());
+}
+
 void ParquetReader::setSourceArrowFile(std::shared_ptr<arrow::io::RandomAccessFile> arrow_file_)
 {
     this->arrow_file = arrow_file_;
@@ -108,6 +116,23 @@ void ParquetReader::addFilter(const String & column_name, const ColumnFilterPtr 
         filters[column_name] = filters[column_name]->merge(filter.get());
     //    std::cerr << "filter on column " << column_name << ": " << filters[column_name]->toString() << std::endl;
 }
+
+void ParquetReader::addCondations(std::unordered_map<String, DataTypePtr> conditions)
+{
+    std::unordered_set<std::string> header_names;
+    for (const auto & col_with_name : header)
+    {
+        header_names.insert(col_with_name.name);
+    }
+    for (const auto & [name, type] : conditions)
+    {
+        if (!header_names.contains(name))
+        {
+            condition_data_types.emplace(name, type);
+        }
+    }
+}
+
 
 std::unique_ptr<RowGroupChunkReader>
 ParquetReader::getRowGroupChunkReader(size_t row_group_idx, RowGroupPrefetchPtr conditions_prefetch, RowGroupPrefetchPtr prefetch)
@@ -180,6 +205,17 @@ SubRowGroupRangeReader::SubRowGroupRangeReader(
         throw Exception(ErrorCodes::PARQUET_EXCEPTION, "row group indices and prefetches size mismatch");
 }
 DB::Chunk SubRowGroupRangeReader::read(size_t rows)
+{
+    Chunk chunk;
+    while (chunk.getNumRows() == 0)
+    {
+        if (!loadRowGroupChunkReaderIfNeeded())
+            break;
+        chunk = row_group_chunk_reader->readChunk(rows);
+    }
+    return chunk;
+}
+DB::Chunk SubRowGroupRangeReader::read_with_select_conditions(size_t rows)
 {
     Chunk chunk;
     while (chunk.getNumRows() == 0)

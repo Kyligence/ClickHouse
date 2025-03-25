@@ -31,7 +31,10 @@ FilterSplitResultPtr ColumnFilterHelper::splitFilterForPushDown(const ActionsDAG
                     if (case_insensitive)
                         col_name = Poco::toLower(col_name);
                     if (!split_result->filters.contains(col_name))
+                    {
                         split_result->filters.emplace(col_name, named_filter.second);
+                        split_result->conditions.emplace(col_name,condition->result_type);
+                    }
                     else
                     {
                         auto merged = split_result->filters[col_name]->merge(named_filter.second.get());
@@ -60,5 +63,6 @@ void pushFilterToParquetReader(const ActionsDAG & filter_expression, ParquetRead
         return;
     auto split_result = ColumnFilterHelper::splitFilterForPushDown(filter_expression);
     reader.pushDownFilter(split_result);
+    reader.addCondations(split_result->conditions);
 }
 }
