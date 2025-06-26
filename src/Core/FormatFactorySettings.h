@@ -197,6 +197,9 @@ Skip pages using min/max values from column index.
     DECLARE(Bool, input_format_parquet_use_offset_index, true, R"(
 Minor tweak to how pages are read from parquet file when no page filtering is used.
 )", 0) \
+    DECLARE(Bool, input_format_parquet_use_native_reader_with_filter_push_down, false, R"(
+A new parquet reader support full filter push down.
+)", 0) \
     DECLARE(Bool, input_format_allow_seeks, true, R"(
 Allow seeks while reading in ORC/Parquet/Arrow input formats.
 
