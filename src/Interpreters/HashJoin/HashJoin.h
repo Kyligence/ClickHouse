@@ -116,7 +116,8 @@ public:
         bool any_take_last_row_ = false,
         size_t reserve_num_ = 0,
         const String & instance_id_ = "",
-        bool use_two_level_maps_ = false);
+        bool use_two_level_maps_ = false,
+        bool always_save_key_ = false);
 
     ~HashJoin() override;
 
@@ -517,6 +518,8 @@ private:
     /// Should be set via setLock to protect hash table from modification from StorageJoin
     /// If set HashJoin instance is not available for modification (addBlockToJoin)
     TableLockHolder storage_join_lock = nullptr;
+
+    bool always_save_key;
 
     void dataMapInit(MapsVariant & map);
 
