@@ -309,7 +309,7 @@ template <typename To, typename DecimalType, typename ReturnType>
 ReturnType convertToImpl(const DecimalType & decimal, UInt32 scale, To & result)
 {
     using DecimalNativeType = typename DecimalType::NativeType;
-    static constexpr bool throw_exception = std::is_void_v<ReturnType>;
+    // static constexpr bool throw_exception = std::is_void_v<ReturnType>;
 
     if constexpr (is_floating_point<To>)
     {
@@ -321,6 +321,8 @@ ReturnType convertToImpl(const DecimalType & decimal, UInt32 scale, To & result)
     {
         DecimalNativeType whole = getWholePart(decimal, scale);
 
+        /// Spark allows overflow when converting decimal to int
+        /*
         if constexpr (is_unsigned_v<To>)
         {
             if (whole < 0)
@@ -331,6 +333,7 @@ ReturnType convertToImpl(const DecimalType & decimal, UInt32 scale, To & result)
                     return ReturnType(true);
             }
         }
+        */
 
         result = static_cast<To>(whole);
     }
@@ -340,6 +343,8 @@ ReturnType convertToImpl(const DecimalType & decimal, UInt32 scale, To & result)
 
         const DecimalNativeType whole = getWholePart(decimal, scale);
 
+        /// Spark allows overflow when converting decimal to int
+        /*
         static const constexpr CastTo min_to = std::numeric_limits<To>::min();
         static const constexpr CastTo max_to = std::numeric_limits<To>::max();
 
@@ -350,6 +355,7 @@ ReturnType convertToImpl(const DecimalType & decimal, UInt32 scale, To & result)
             else
                 return ReturnType(true);
         }
+        */
 
         result = static_cast<CastTo>(whole);
     }
