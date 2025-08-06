@@ -821,9 +821,9 @@ void ParquetBlockInputFormat::initializeIfNeeded()
         new_native_reader = std::make_shared<ParquetReader>(
             getPort().getHeader(), *seekable_in, arrow_file, settings, row_groups_indices, metadata, io_pool);
         new_native_reader->setSourceArrowFile(arrow_file);
-        if (parser_group->key_condition)
+        if (format_filter_info->key_condition)
         {
-            if (std::optional<ActionsDAG> filter = parser_group->key_condition->getFilterDagCopy(); filter.has_value())
+            if (std::optional<ActionsDAG> filter = format_filter_info->key_condition->getFilterDagCopy(); filter.has_value())
                 pushFilterToParquetReader(filter.value(), *new_native_reader);
         }
     }
