@@ -15,6 +15,8 @@ struct NegateImpl
 
     static NO_SANITIZE_UNDEFINED ResultType apply(A a)
     {
+        if (static_cast<ResultType>(a) == static_cast<ResultType>(0))
+            return static_cast<ResultType>(0);
         return -static_cast<ResultType>(a);
     }
 
