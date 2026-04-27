@@ -33,7 +33,10 @@ public:
 protected:
     SeekableReadBuffer & in;
     size_t file_size;
-    bool supports_read_at;
+    /// Use offset-based reads (ReadBuffer::readBigAt, e.g. hdfs pread) instead of seek+read; needed for ORC tail on HDFS EC.
+    bool use_offset_based_read;
+    /// Async wrapper only when caller enabled prefetch and the buffer supports read-at.
+    bool use_async_prefetch;
     ThreadPoolCallbackRunnerUnsafe<void> async_runner;
 
     std::string name = "ORCInputStream";
