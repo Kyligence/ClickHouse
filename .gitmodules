@@ -54,13 +54,13 @@
 	url = https://github.com/ClickHouse/thrift
 [submodule "contrib/libhdfs3"]
 	path = contrib/libhdfs3
-	url = https://github.com/ClickHouse/libhdfs3
+  url = https://github.com/Kyligence/libhdfs3.git
 [submodule "contrib/libxml2"]
 	path = contrib/libxml2
 	url = https://github.com/GNOME/libxml2
 [submodule "contrib/libgsasl"]
 	path = contrib/libgsasl
-	url = https://github.com/ClickHouse/libgsasl
+  url = https://github.com/Kyligence/clickhouse-libgsasl.git
 [submodule "contrib/snappy"]
 	path = contrib/snappy
 	url = https://github.com/ClickHouse/snappy
