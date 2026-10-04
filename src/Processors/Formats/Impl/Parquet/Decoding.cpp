@@ -3,6 +3,7 @@
 #include <base/arithmeticOverflow.h>
 #include <Columns/ColumnString.h>
 #include <Common/FloatUtils.h>
+#include <Common/logger_useful.h>
 
 #include <arrow/util/bit_stream_utils.h>
 
@@ -1388,8 +1389,9 @@ template struct BigEndianDecimalStringConverter<Int64>;
 template struct BigEndianDecimalStringConverter<Int128>;
 template struct BigEndianDecimalStringConverter<Int256>;
 
-Int96Converter::Int96Converter()
+Int96Converter::Int96Converter(bool _int96_timestamp_overflow_exception_or_not)
 {
+    int96_timestamp_overflow_exception_or_not = _int96_timestamp_overflow_exception_or_not;
     input_size = 12;
 }
 
@@ -1426,9 +1428,21 @@ void Int96Converter::convertColumn(std::span<const char> data, size_t num_values
         overflow |= common::addOverflow(x, nanos, x);
 
         if (overflow)
-            throw Exception(ErrorCodes::VALUE_IS_OUT_OF_RANGE_OF_DATA_TYPE, "INT96 timestamp out of range: julian day {}, time of day {} ns", julian_day, nanos);
-
-        to[i] = x;
+        {
+            if (int96_timestamp_overflow_exception_or_not)
+            {
+                throw Exception(ErrorCodes::VALUE_IS_OUT_OF_RANGE_OF_DATA_TYPE, "INT96 timestamp out of range: julian day {}, time of day {} ns", julian_day, nanos);
+            }
+            else
+            {
+                to[i] = INT64_MAX;
+                LOG_WARNING(getLogger("Int96Converter"), "INT96 timestamp out of range: julian day {}, time of day {} ns", julian_day, nanos);
+            }
+        }
+        else
+        {
+            to[i] = x;
+        }
     }
 }
 

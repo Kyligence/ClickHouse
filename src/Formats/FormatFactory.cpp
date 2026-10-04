@@ -362,6 +362,7 @@ FormatSettings getFormatSettings(const ContextPtr & context, const Settings & se
     format_settings.native.use_flattened_dynamic_and_json_serialization = settings[Setting::output_format_native_use_flattened_dynamic_and_json_serialization];
     format_settings.max_parser_depth = settings[Setting::max_parser_depth];
     format_settings.date_time_overflow_behavior = settings[Setting::date_time_overflow_behavior];
+    format_settings.int96_timestamp_overflow_exception_or_not = settings[Setting::int96_timestamp_overflow_exception_or_not];
     format_settings.try_infer_variant = settings[Setting::input_format_try_infer_variants];
     format_settings.client_protocol_version = context->getClientProtocolVersion();
     format_settings.allow_special_bool_values_inside_variant = settings[Setting::allow_special_bool_values_inside_variant];

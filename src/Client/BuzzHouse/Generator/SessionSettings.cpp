@@ -402,6 +402,7 @@ std::unordered_map<String, CHSetting> serverSettings = {
          },
          {},
          false)},
+    {"int96_timestamp_overflow_exception_or_not", trueOrFalseSettingNoOracle},
     {"decimal_check_overflow", trueOrFalseSettingNoOracle},
     {"delta_lake_enable_engine_predicate", trueOrFalseSetting},
     {"delta_lake_enable_expression_visitor_logging", trueOrFalseSettingNoOracle},

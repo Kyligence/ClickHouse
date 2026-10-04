@@ -298,7 +298,9 @@ extern template struct BigEndianDecimalStringConverter<Int256>;
 
 struct Int96Converter : public FixedSizeConverter
 {
-    Int96Converter();
+    bool int96_timestamp_overflow_exception_or_not = true;
+
+    Int96Converter(bool _int96_timestamp_overflow_exception_or_not);
 
     void convertColumn(std::span<const char> data, size_t num_values, IColumn & col) const override;
 };

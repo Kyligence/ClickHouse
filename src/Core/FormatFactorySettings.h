@@ -1459,6 +1459,9 @@ Execute a pipeline for reading dictionary source in several threads. It's suppor
     DECLARE(Bool, precise_float_parsing, false, R"(
 Prefer more precise (but slower) float parsing algorithm
 )", 0) \
+    DECLARE(Bool, int96_timestamp_overflow_exception_or_not, true, R"(
+When int96 timestamp overflow, throw exception or not.
+)", 0) \
     DECLARE(DateTimeOverflowBehavior, date_time_overflow_behavior, "ignore", R"(
 Defines the behavior when [Date](../../sql-reference/data-types/date.md), [Date32](../../sql-reference/data-types/date32.md), [DateTime](../../sql-reference/data-types/datetime.md), [DateTime64](../../sql-reference/data-types/datetime64.md) or integers are converted into Date, Date32, DateTime or DateTime64 but the value cannot be represented in the result type.
 

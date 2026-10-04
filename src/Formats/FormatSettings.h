@@ -114,6 +114,8 @@ struct FormatSettings
 
     DateTimeOverflowBehavior date_time_overflow_behavior = DateTimeOverflowBehavior::Ignore;
 
+    bool int96_timestamp_overflow_exception_or_not = true;
+
     bool input_format_ipv4_default_on_conversion_error = false;
     bool input_format_ipv6_default_on_conversion_error = false;
 
