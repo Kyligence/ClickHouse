@@ -1178,7 +1178,7 @@ try
 
     StackTrace::setShowAddresses(server_settings[ServerSetting::show_addresses_in_stack_traces]);
 
-#if USE_HDFS
+#if USE_LIBHDFS3
     /// This will point libhdfs3 to the right location for its config.
     /// Note: this has to be done once at server initialization, because 'setenv' is not thread-safe.
 
@@ -1193,6 +1193,30 @@ try
                 libhdfs3_conf = std::filesystem::absolute(config_dir / libhdfs3_conf);
         }
         setenv("LIBHDFS3_CONF", libhdfs3_conf.c_str(), true /* overwrite */); // NOLINT
+    }
+#endif
+
+#if USE_LIBHDFS_JNI
+    /// Hadoop libhdfs starts a JVM and loads core-site.xml/hdfs-site.xml from CLASSPATH.
+    /// HADOOP_CONF_DIR is set as well, but libhdfs itself only reads CLASSPATH.
+
+    String hadoop_conf_dir = config().getString("hdfs.hadoop_conf_dir", "");
+    if (!hadoop_conf_dir.empty())
+    {
+        if (std::filesystem::path{hadoop_conf_dir}.is_relative() && !std::filesystem::exists(hadoop_conf_dir))
+        {
+            const String config_path = config().getString("config-file", "config.xml");
+            const auto config_dir = std::filesystem::path{config_path}.remove_filename();
+            if (std::filesystem::exists(config_dir / hadoop_conf_dir))
+                hadoop_conf_dir = std::filesystem::absolute(config_dir / hadoop_conf_dir);
+        }
+        setenv("HADOOP_CONF_DIR", hadoop_conf_dir.c_str(), true /* overwrite */); // NOLINT
+
+        String classpath = hadoop_conf_dir;
+        if (const char * current_classpath = getenv("CLASSPATH")) // NOLINT(concurrency-mt-unsafe)
+            if (*current_classpath)
+                classpath += ":" + String(current_classpath);
+        setenv("CLASSPATH", classpath.c_str(), true /* overwrite */); // NOLINT
     }
 #endif
 

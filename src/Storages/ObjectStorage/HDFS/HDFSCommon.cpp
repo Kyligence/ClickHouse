@@ -2,6 +2,7 @@
 #include <Poco/URI.h>
 #include <boost/algorithm/string/replace.hpp>
 #include <filesystem>
+#include <mutex>
 #include <Common/re2.h>
 
 #if USE_HDFS
@@ -30,6 +31,26 @@ namespace ErrorCodes
 
 static constexpr std::string_view CONFIG_PREFIX = "hdfs";
 static constexpr std::string_view HDFS_URL_REGEXP = "^hdfs://[^/]*/.*";
+
+namespace
+{
+
+void logHDFSBackendOnce()
+{
+    static std::once_flag flag;
+    std::call_once(flag, []
+    {
+#if USE_LIBHDFS_JNI
+        LOG_INFO(getLogger("HDFSClient"), "HDFS backend: Hadoop libhdfs (JNI)");
+#elif USE_LIBHDFS3
+        LOG_INFO(getLogger("HDFSClient"), "HDFS backend: Bundled libhdfs3 (native)");
+#else
+        LOG_WARNING(getLogger("HDFSClient"), "HDFS backend: unknown");
+#endif
+    });
+}
+
+}
 
 
 HDFSFileInfo::~HDFSFileInfo()
@@ -64,7 +85,7 @@ void HDFSBuilderWrapper::loadFromConfig(
             #if USE_KRB5
             need_kinit = true;
             hadoop_kerberos_principal = config.getString(key_path);
-            hdfsBuilderSetPrincipal(hdfs_builder, hadoop_kerberos_principal.c_str());
+            hdfsBuilderSetPrincipal(hdfs_builder, keepString(hadoop_kerberos_principal));
             #else // USE_KRB5
             LOG_WARNING(
                 getLogger("HDFSClient"),
@@ -121,6 +142,8 @@ void HDFSBuilderWrapper::runKinit() const
 
 HDFSBuilderWrapper createHDFSBuilder(const String & uri_str, const Poco::Util::AbstractConfiguration & config)
 {
+    logHDFSBackendOnce();
+
     const Poco::URI uri(uri_str);
     const auto & host = uri.getHost();
     auto port = uri.getPort();
@@ -132,9 +155,15 @@ HDFSBuilderWrapper createHDFSBuilder(const String & uri_str, const Poco::Util::A
         throw Exception(ErrorCodes::HDFS_ERROR, "Unable to create builder to connect to HDFS: {} {}",
             uri.toString(), String(hdfsGetLastError()));
 
+    #if USE_LIBHDFS3
     hdfsBuilderConfSetStr(builder.get(), "input.read.timeout", "60000"); // 1 min
     hdfsBuilderConfSetStr(builder.get(), "input.write.timeout", "60000"); // 1 min
     hdfsBuilderConfSetStr(builder.get(), "input.connect.timeout", "60000"); // 1 min
+    #elif USE_LIBHDFS_JNI
+    hdfsBuilderConfSetStr(builder.get(), "dfs.client.socket-timeout", "60000"); // 1 min
+    hdfsBuilderConfSetStr(builder.get(), "dfs.datanode.socket.write.timeout", "60000"); // 1 min
+    hdfsBuilderConfSetStr(builder.get(), "ipc.client.connect.timeout", "60000"); // 1 min
+    #endif
 
     const String & user_info = uri.getUserInfo();
     String user;
@@ -146,10 +175,10 @@ HDFSBuilderWrapper createHDFSBuilder(const String & uri_str, const Poco::Util::A
         else
             user = user_info;
 
-        hdfsBuilderSetUserName(builder.get(), user.c_str());
+        hdfsBuilderSetUserName(builder.get(), builder.keepString(user));
     }
 
-    hdfsBuilderSetNameNode(builder.get(), host.c_str());
+    hdfsBuilderSetNameNode(builder.get(), builder.keepString(host));
     if (port != 0)
     {
         hdfsBuilderSetNameNodePort(builder.get(), port);
@@ -168,6 +197,10 @@ HDFSBuilderWrapper createHDFSBuilder(const String & uri_str, const Poco::Util::A
 
     #if USE_KRB5
     builder.runKinit();
+    #if USE_LIBHDFS_JNI
+    if (!builder.hadoop_security_kerberos_ticket_cache_path.empty())
+        hdfsBuilderSetKerbTicketCachePath(builder.get(), builder.keepString(builder.hadoop_security_kerberos_ticket_cache_path));
+    #endif
     #endif // USE_KRB5
 
     return builder;

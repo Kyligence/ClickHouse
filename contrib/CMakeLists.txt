@@ -151,8 +151,22 @@ add_contrib (libgsasl-cmake libgsasl) # requires krb5
 add_contrib (librdkafka-cmake librdkafka) # requires: libgsasl
 add_contrib (nats-io-cmake nats-io)
 add_contrib (isa-l-cmake isa-l)
-add_contrib (libhdfs3-cmake libhdfs3) # requires: google-protobuf, krb5, isa-l
-add_contrib (hive-metastore-cmake hive-metastore) # requires: thrift, avro, arrow, libhdfs3
+if (HDFS_BACKEND STREQUAL "jni")
+    # Hadoop's libhdfs is an external library, so there is no submodule to check out.
+    if (OS_FREEBSD OR ARCH_PPC64LE)
+        message(STATUS "HDFS (JNI) is not supported on this platform")
+    else()
+        option(ENABLE_HDFS "Enable HDFS" ${ENABLE_LIBRARIES})
+        if (ENABLE_HDFS)
+            add_contrib (libhdfs-cmake)
+        else()
+            message(STATUS "Not using HDFS")
+        endif()
+    endif()
+else()
+    add_contrib (libhdfs3-cmake libhdfs3) # requires: google-protobuf, krb5, isa-l
+endif()
+add_contrib (hive-metastore-cmake hive-metastore) # requires: thrift, avro, arrow, hdfs
 add_contrib (cppkafka-cmake cppkafka)
 
 option(ENABLE_LIBPQXX "Enable PostgreSQL" ${ENABLE_LIBRARIES})

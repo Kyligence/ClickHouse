@@ -3,11 +3,11 @@
 #include "config.h"
 
 #if USE_HDFS
+#include <deque>
 #include <memory>
 #include <type_traits>
-#include <vector>
 
-#include <hdfs/hdfs.h>
+#include <Storages/ObjectStorage/HDFS/HDFSBackendCompat.h>
 #include <base/types.h>
 
 #include <Poco/Util/AbstractConfiguration.h>
@@ -53,7 +53,15 @@ static const String CONFIG_PREFIX;
 public:
     HDFSBuilderWrapper() : hdfs_builder(hdfsNewBuilder()) {}
 
-    ~HDFSBuilderWrapper() { hdfsFreeBuilder(hdfs_builder); }
+    /// Hadoop's libhdfs frees the builder inside hdfsBuilderConnect, while libhdfs3
+    /// leaves it to the caller. Avoid a double free in the JNI case.
+    ~HDFSBuilderWrapper()
+    {
+#if USE_LIBHDFS3
+        if (hdfs_builder)
+            hdfsFreeBuilder(hdfs_builder);
+#endif
+    }
 
     HDFSBuilderWrapper(const HDFSBuilderWrapper &) = delete;
     HDFSBuilderWrapper & operator=(const HDFSBuilderWrapper &) = delete;
@@ -66,6 +74,7 @@ public:
     HDFSBuilderWrapper & operator=(HDFSBuilderWrapper && other) noexcept
     {
         std::swap(hdfs_builder, other.hdfs_builder);
+        string_stor = std::move(other.string_stor);
         config_stor = std::move(other.config_stor);
     #if USE_KRB5
         hadoop_kerberos_keytab = std::move(other.hadoop_kerberos_keytab);
@@ -85,6 +94,15 @@ public:
 private:
     void loadFromConfig(const Poco::Util::AbstractConfiguration & config, const String & prefix, bool isUser = false);
 
+    /// Hadoop's libhdfs shallow-copies strings passed to the builder setters, so they
+    /// must stay alive until hdfsBuilderConnect. std::deque keeps element addresses
+    /// stable on insertion and on move.
+    const char * keepString(String value)
+    {
+        string_stor.emplace_back(std::move(value));
+        return string_stor.back().c_str();
+    }
+
     // hdfs builder relies on an external config data storage
     std::pair<String, String>& keep(const String & k, const String & v)
     {
@@ -92,7 +110,8 @@ private:
     }
 
     hdfsBuilder * hdfs_builder = nullptr;
-    std::vector<std::pair<String, String>> config_stor;
+    std::deque<String> string_stor;
+    std::deque<std::pair<String, String>> config_stor;
 
     #if USE_KRB5
     String hadoop_kerberos_keytab;

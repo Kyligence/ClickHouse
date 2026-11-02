@@ -8,7 +8,7 @@
 #include <Common/Scheduler/ResourceGuard.h>
 #include <Common/Throttler.h>
 #include <Common/safe_cast.h>
-#include <hdfs/hdfs.h>
+#include <Storages/ObjectStorage/HDFS/HDFSBackendCompat.h>
 
 
 namespace DB

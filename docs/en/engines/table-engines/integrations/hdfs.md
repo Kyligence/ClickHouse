@@ -207,9 +207,15 @@ Similar to GraphiteMergeTree, the HDFS engine supports extended configuration us
 |hadoop\_kerberos\_keytab                               | ""                      |
 |hadoop\_kerberos\_principal                            | ""                      |
 |libhdfs3\_conf                                         | ""                      |
+|hadoop\_conf\_dir                                      | ""                      |
+
+`libhdfs3_conf` is used by the bundled libhdfs3 client. When ClickHouse is built with `-DHDFS_BACKEND=jni`
+(Hadoop `libhdfs`), use `hadoop_conf_dir` instead: it is added to `CLASSPATH` (and exported as
+`HADOOP_CONF_DIR`), so `core-site.xml` and `hdfs-site.xml` are picked up. `CLASSPATH` must also contain the
+Hadoop client jars, for example the output of `hadoop classpath`.
 
 ### Limitations {#limitations}
-* `hadoop_security_kerberos_ticket_cache_path` and `libhdfs3_conf` can be global only, not user specific
+* `hadoop_security_kerberos_ticket_cache_path`, `libhdfs3_conf` and `hadoop_conf_dir` can be global only, not user specific
 
 ## Kerberos support {#kerberos-support}
 
@@ -234,6 +240,9 @@ libhdfs3 support HDFS namenode HA.
 ```
 
 - Then use `dfs.nameservices` tag value of `hdfs-site.xml` as the namenode address in the HDFS URI. For example, replace `hdfs://appadmin@192.168.101.11:8020/abc/` with `hdfs://appadmin@my_nameservice/abc/`.
+
+When built with `-DHDFS_BACKEND=jni`, point `hadoop_conf_dir` at a directory containing both `core-site.xml`
+and `hdfs-site.xml` instead of using `libhdfs3_conf`.
 
 ## Virtual columns {#virtual-columns}
 

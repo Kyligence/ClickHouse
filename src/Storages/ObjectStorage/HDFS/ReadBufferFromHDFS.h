@@ -6,7 +6,7 @@
 #include <IO/ReadBuffer.h>
 #include <IO/BufferWithOwnMemory.h>
 #include <memory>
-#include <hdfs/hdfs.h>
+#include <Storages/ObjectStorage/HDFS/HDFSBackendCompat.h>
 #include <base/types.h>
 #include <IO/ReadBufferFromFileBase.h>
 

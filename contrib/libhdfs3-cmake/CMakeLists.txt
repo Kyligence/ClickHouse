@@ -1,3 +1,8 @@
+if (HDFS_BACKEND STREQUAL "jni")
+    message(STATUS "HDFS backend is jni, skipping bundled libhdfs3")
+    return()
+endif()
+
 if(NOT OS_FREEBSD AND NOT ARCH_PPC64LE)
     option(ENABLE_HDFS "Enable HDFS" ${ENABLE_LIBRARIES})
 elseif(ENABLE_HDFS)

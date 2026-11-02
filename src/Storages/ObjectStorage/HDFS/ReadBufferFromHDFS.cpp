@@ -9,7 +9,7 @@
 #include <Common/safe_cast.h>
 #include <Common/logger_useful.h>
 #include <IO/ReadSettings.h>
-#include <hdfs/hdfs.h>
+#include <Storages/ObjectStorage/HDFS/HDFSBackendCompat.h>
 
 
 namespace DB
@@ -164,7 +164,7 @@ struct ReadBufferFromHDFS::ReadBufferFromHDFSImpl : public BufferWithOwnMemory<S
     size_t pread(char * buffer, size_t size, size_t offset)
     {
         ResourceGuard rlock(ResourceGuard::Metrics::getIORead(), read_settings.io_scheduling.read_resource_link, size);
-        auto bytes_read = wrapErr<tSize>(hdfsPread, fs.get(), fin, buffer, safe_cast<int>(size), offset);
+        auto bytes_read = wrapErr<tSize>(hdfsPreadCompat, fs.get(), fin, buffer, safe_cast<int>(size), offset);
         rlock.unlock(std::max(0, bytes_read));
 
         if (bytes_read < 0)

@@ -377,6 +377,15 @@ include(cmake/limit_jobs.cmake)
 # Turns on all external libs like s3, kafka, ODBC, ...
 option(ENABLE_LIBRARIES "Enable all external libraries by default" ON)
 
+# Select the HDFS client implementation:
+#   libhdfs3 - build the bundled native C++ client from contrib/libhdfs3 (default)
+#   jni      - link Hadoop's libhdfs (JNI based) from HADOOP_HOME
+set(HDFS_BACKEND "libhdfs3" CACHE STRING "HDFS client backend: libhdfs3 or jni")
+set_property(CACHE HDFS_BACKEND PROPERTY STRINGS libhdfs3 jni)
+if (NOT HDFS_BACKEND MATCHES "^(libhdfs3|jni)$")
+    message (FATAL_ERROR "HDFS_BACKEND must be 'libhdfs3' or 'jni', got '${HDFS_BACKEND}'")
+endif()
+
 # Don't use the system compiler-rt library even if it is available. Instead build it directly
 option(USE_SYSTEM_COMPILER_RT "Use the system compiler-rt if available. If disabled it will be built from sources (supported for Linux and FreeBSD)" ON)
 
