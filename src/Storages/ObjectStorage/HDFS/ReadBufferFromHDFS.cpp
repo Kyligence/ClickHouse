@@ -56,7 +56,7 @@ struct ReadBufferFromHDFS::ReadBufferFromHDFSImpl : public BufferWithOwnMemory<S
         , read_until_position(read_until_position_)
         , enable_pread(read_settings_.enable_hdfs_pread)
     {
-        fs = createHDFSFS(builder.get());
+        fs = createHDFSFS(builder);
         fin = wrapErr<hdfsFile>(hdfsOpenFile, fs.get(), hdfs_file_path.c_str(), O_RDONLY, 0, 0, 0);
 
         if (fin == nullptr)

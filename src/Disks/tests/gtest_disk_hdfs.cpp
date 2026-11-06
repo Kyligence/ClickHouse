@@ -23,7 +23,7 @@ TEST(DiskTestHDFS, RemoveFileHDFS)
     auto disk = DB::DiskHDFS("disk_hdfs", hdfs_uri, std::move(settings), metadata_path, *config);
 
     DB::HDFSBuilderWrapper builder = DB::createHDFSBuilder(hdfs_uri, *config);
-    DB::HDFSFSPtr fs = DB::createHDFSFS(builder.get());
+    DB::HDFSFSPtr fs = DB::createHDFSFS(builder);
 
     disk.writeFile(file_name, 1024, DB::WriteMode::Rewrite);
     auto metadata = disk.readMeta(file_name);

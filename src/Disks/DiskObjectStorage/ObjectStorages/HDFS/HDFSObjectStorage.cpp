@@ -33,7 +33,7 @@ void HDFSObjectStorage::initializeHDFSFS() const
     if (initialized)
         return;
 
-    hdfs_fs = createHDFSFS(builder.get());
+    hdfs_fs = createHDFSFS(builder);
     initialized = true;
 }
 

@@ -25,6 +25,14 @@ namespace detail
             hdfsDisconnect(fs_ptr);
         }
     };
+
+    /// In the JNI backend connections are cached for the whole process (see
+    /// createHDFSFS), so the handle owned by a reader is only a view of the
+    /// cached connection and must not be disconnected on destruction.
+    struct HDFSFsNoopDeleter
+    {
+        void operator()(hdfsFS /* fs_ptr */) {}
+    };
 }
 
 
@@ -76,6 +84,9 @@ public:
         std::swap(hdfs_builder, other.hdfs_builder);
         string_stor = std::move(other.string_stor);
         config_stor = std::move(other.config_stor);
+    #if USE_LIBHDFS_JNI
+        connection_key = std::move(other.connection_key);
+    #endif
     #if USE_KRB5
         hadoop_kerberos_keytab = std::move(other.hadoop_kerberos_keytab);
         hadoop_kerberos_principal = std::move(other.hadoop_kerberos_principal);
@@ -86,6 +97,33 @@ public:
     }
 
     hdfsBuilder * get() const { return hdfs_builder; }
+
+#if USE_LIBHDFS_JNI
+    /// Name node + user used to key the process-wide JNI connection cache.
+    const String & getConnectionKey() const { return connection_key; }
+#endif
+
+    /// Release the builder without connecting. Needed when a cached connection is
+    /// reused: hdfsBuilderConnect() frees the builder itself in the JNI backend,
+    /// but it is not called in that case.
+    void resetBuilder()
+    {
+        if (!hdfs_builder)
+            return;
+    #if USE_LIBHDFS_JNI
+        hdfsFreeBuilder(hdfs_builder);
+    #endif
+        hdfs_builder = nullptr;
+    }
+
+    /// Give up ownership of the builder. Used by the JNI backend, where
+    /// hdfsBuilderConnect() frees the builder internally.
+    hdfsBuilder * release()
+    {
+        hdfsBuilder * result = hdfs_builder;
+        hdfs_builder = nullptr;
+        return result;
+    }
 
     #if USE_KRB5
     void runKinit() const;
@@ -112,6 +150,9 @@ private:
     hdfsBuilder * hdfs_builder = nullptr;
     std::deque<String> string_stor;
     std::deque<std::pair<String, String>> config_stor;
+#if USE_LIBHDFS_JNI
+    String connection_key;
+#endif
 
     #if USE_KRB5
     String hadoop_kerberos_keytab;
@@ -121,13 +162,19 @@ private:
     #endif // USE_KRB5
 };
 
+#if USE_LIBHDFS_JNI
+/// JNI connections live in a process-wide cache (see createHDFSFS), so destroying
+/// a reader must not disconnect the shared connection.
+using HDFSFSPtr = std::unique_ptr<std::remove_pointer_t<hdfsFS>, detail::HDFSFsNoopDeleter>;
+#else
 using HDFSFSPtr = std::unique_ptr<std::remove_pointer_t<hdfsFS>, detail::HDFSFsDeleter>;
+#endif
 
 
 // set read/connect timeout, default value in libhdfs3 is about 1 hour, and too large
 /// TODO Allow to tune from query Settings.
 HDFSBuilderWrapper createHDFSBuilder(const String & uri_str, const Poco::Util::AbstractConfiguration &);
-HDFSFSPtr createHDFSFS(hdfsBuilder * builder);
+HDFSFSPtr createHDFSFS(HDFSBuilderWrapper & builder);
 
 
 String getNameNodeUrl(const String & hdfs_url);

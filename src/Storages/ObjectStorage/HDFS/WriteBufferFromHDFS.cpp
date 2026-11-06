@@ -41,7 +41,7 @@ struct WriteBufferFromHDFS::WriteBufferFromHDFSImpl : public HDFSErrorWrapper
         , hdfs_file_path(hdfs_file_path_)
         , write_settings(write_settings_)
     {
-        fs = createHDFSFS(builder.get());
+        fs = createHDFSFS(builder);
 
         /// O_WRONLY meaning create or overwrite i.e., implies O_TRUNCAT here
         fout = hdfsOpenFile(fs.get(), hdfs_file_path.c_str(), flags, 0, replication_, 0);
