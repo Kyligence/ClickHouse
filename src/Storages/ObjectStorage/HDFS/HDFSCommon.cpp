@@ -31,7 +31,14 @@ namespace ErrorCodes
 }
 
 static constexpr std::string_view CONFIG_PREFIX = "hdfs";
+#if USE_LIBHDFS_JNI
+/// libhdfs resolves the URL through Hadoop's FileSystem.newInstance(), so any scheme
+/// registered in the JVM can be used (hdfs://, obs://, cosn://, s3a://, ...).
+static constexpr std::string_view HDFS_URL_REGEXP = "^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]*/.*";
+#else
+/// libhdfs3 only speaks the HDFS protocol.
 static constexpr std::string_view HDFS_URL_REGEXP = "^hdfs://[^/]*/.*";
+#endif
 
 namespace
 {
@@ -188,11 +195,22 @@ HDFSBuilderWrapper createHDFSBuilder(const String & uri_str, const Poco::Util::A
         hdfsBuilderSetUserName(builder.get(), builder.keepString(user));
     }
 
+#if USE_LIBHDFS_JNI
+    /// libhdfs passes the name node to FileSystem#newInstance(URI, Configuration, user)
+    /// and only prepends "hdfs://" when the string has no scheme (calcEffectiveURI in
+    /// Hadoop's hdfs.c). Keep the original scheme so that object storages with their own
+    /// Hadoop FileSystem implementation (obs://, cosn://, ...) are resolved in the JVM.
+    String name_node = uri.getScheme() + "://" + host;
+    if (port != 0)
+        name_node += ":" + std::to_string(port);
+    hdfsBuilderSetNameNode(builder.get(), builder.keepString(name_node));
+#else
     hdfsBuilderSetNameNode(builder.get(), builder.keepString(host));
     if (port != 0)
     {
         hdfsBuilderSetNameNodePort(builder.get(), port);
     }
+#endif
 
     builder.loadFromConfig(config, std::string(CONFIG_PREFIX));
 
@@ -214,14 +232,11 @@ HDFSBuilderWrapper createHDFSBuilder(const String & uri_str, const Poco::Util::A
     #endif // USE_KRB5
 
 #if USE_LIBHDFS_JNI
-    /// Mirrors the key Hadoop uses for its FileSystem.CACHE: name node + user.
-    /// The URI scheme is intentionally omitted: checkHDFSURL() only accepts
-    /// "hdfs://", so the name node alone is unique within the process.
-    /// The path is intentionally not part of the key, otherwise every file would
-    /// get its own connection.
-    String name_node = host;
-    if (port != 0)
-        name_node += ":" + std::to_string(port);
+    /// Mirrors the key Hadoop uses for its FileSystem.CACHE: URI + user.
+    /// The scheme must be part of the key, otherwise hdfs://<namenode> and
+    /// obs://<bucket> (or two buckets of the same object storage) would share
+    /// one connection. The path is intentionally not part of the key, otherwise
+    /// every file would get its own connection.
     builder.connection_key = name_node + "#" + user;
 #endif
 
@@ -311,7 +326,13 @@ String getNameNodeCluster(const String &hdfs_url)
 void checkHDFSURL(const String & url)
 {
     if (!re2::RE2::FullMatch(url, std::string(HDFS_URL_REGEXP)))
+    {
+#if USE_LIBHDFS_JNI
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "Bad URL: {}. It should have structure '<scheme>://<host_name>:<port>/<path>'", url);
+#else
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Bad HDFS URL: {}. It should have structure 'hdfs://<host_name>:<port>/<path>'", url);
+#endif
+    }
 }
 
 }
