@@ -41,6 +41,7 @@ const VersionToSettingsChangesMap & getSettingsChangesHistory()
         /// Note: please check if the key already exists to prevent duplicate entries.
         addSettingsChanges(settings_changes_history, "25.12",
         {
+            {"input_format_parquet_prewhere_enabled", false, false, "New setting. When using Parquet reader v3, apply the pushed-down filter inside the reader (PREWHERE) and drop non-matching rows before reading the remaining columns."},
             {"use_parquet_metadata_cache", false, true, "Enables cache of parquet file metadata."},
             {"format_binary_max_object_size", 100000, 100000, "New setting that limits the maximum size of object during JSON type binary deserialization"},
             {"max_streams_for_files_processing_in_cluster_functions", 0, 0, "Add a new setting that allows to limit number of streams for files processing in *Cluster table functions"},

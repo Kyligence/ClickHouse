@@ -2,6 +2,7 @@
 
 #include <Common/BitHelpers.h>
 #include <Common/ProfileEvents.h>
+#include <Columns/ColumnsCommon.h>
 #include <Formats/FormatFilterInfo.h>
 #include <Formats/FormatParserSharedResources.h>
 #include <Processors/Formats/IInputFormat.h>
@@ -333,7 +334,11 @@ void ReadManager::finishRowSubgroupStage(size_t row_group_idx, size_t row_subgro
     switch (stage)
     {
         case ReadStage::NotStarted:
-            if (!reader.prewhere_steps.empty())
+            /// Row groups that are not selected by setBucketsToRead() (e.g. Spark splits
+            /// in Gluten) have filter.rows_pass initialized to 0. Don't start PREWHERE
+            /// for them: determinePagesToPrefetch() asserts rows_pass > 0.
+            /// Let the "skip subgroups" loop below mark all their subgroups as skipped.
+            if (!reader.prewhere_steps.empty() && row_group.need_to_process)
             {
                 /// Start prewhere.
                 addTasksToReadColumns(row_group_idx, row_subgroup_idx, ReadStage::PrewhereOffsetIndex, diff);
@@ -646,6 +651,14 @@ void ReadManager::scheduleTask(Task task, bool is_first_in_group, MemoryUsageDif
             case ReadStage::MainData:
             {
                 RowSubgroup & row_subgroup = row_group.subgroups.at(task.row_subgroup_idx);
+
+                /// A subgroup can have no rows left to read: it is outside setBucketsToRead(),
+                /// or a previous PREWHERE step filtered all its rows out. Don't derive page
+                /// prefetches or reserve memory for it; determinePagesToPrefetch() requires
+                /// rows_pass > 0.
+                if (row_subgroup.filter.rows_pass == 0)
+                    break;
+
                 ColumnSubchunk & subchunk = row_subgroup.columns.at(task.column_idx);
 
                 reader.determinePagesToPrefetch(column, row_subgroup, row_group, prefetches);
@@ -767,6 +780,14 @@ void ReadManager::runTask(Task task, bool last_in_batch, MemoryUsageDiff & diff)
             case ReadStage::PrewhereData:
             case ReadStage::MainData:
             {
+                chassert(task.row_subgroup_idx != UINT64_MAX);
+                RowSubgroup & row_subgroup = row_group.subgroups.at(task.row_subgroup_idx);
+
+                /// See the matching check in scheduleTask(): nothing to decode for a subgroup
+                /// whose rows were all filtered out (or that is outside the requested buckets).
+                if (row_subgroup.filter.rows_pass == 0)
+                    break;
+
                 if (!column.dictionary.isInitialized() && column.dictionary_page_prefetch)
                 {
                     if (!reader.decodeDictionaryPage(column, column_info))
@@ -774,8 +795,6 @@ void ReadManager::runTask(Task task, bool last_in_batch, MemoryUsageDiff & diff)
                 }
                 size_t prev_page_idx = column.data_pages_idx;
 
-                chassert(task.row_subgroup_idx != UINT64_MAX);
-                RowSubgroup & row_subgroup = row_group.subgroups.at(task.row_subgroup_idx);
                 reader.decodePrimitiveColumn(
                     column, column_info, row_subgroup.columns.at(task.column_idx),
                     row_group, row_subgroup);
@@ -954,7 +973,7 @@ ReadManager::ReadResult ReadManager::read()
     {
         chassert(row_subgroup.filter.rows_pass > 0);
         chassert(!row_subgroup.filter.filter.empty());
-        chassert(std::accumulate(row_subgroup.filter.filter.begin(), row_subgroup.filter.filter.end(), size_t(0)) == chunk.getNumRows());
+        chassert(countBytesInFilter(row_subgroup.filter.filter) == chunk.getNumRows());
 
         row_numbers_info->applied_filter = std::move(row_subgroup.filter.filter);
     }

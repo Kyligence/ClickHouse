@@ -182,6 +182,9 @@ When reading Parquet files, parse JSON columns as ClickHouse JSON Column.
     DECLARE(Bool, input_format_parquet_use_native_reader_v3, true, R"(
 Use Parquet reader v3.
 )", 0) \
+    DECLARE(Bool, input_format_parquet_prewhere_enabled, false, R"(
+When reading Parquet files with reader v3, evaluate the pushed-down filter as PREWHERE inside the reader and drop non-matching rows before reading the remaining columns. When disabled, the filter is used for row-group/page pruning only.
+)", 0) \
     DECLARE(UInt64, input_format_parquet_memory_low_watermark, 2ul << 20, R"(
 Schedule prefetches more aggressively if memory usage is below than threshold. Potentially useful e.g. if there are many small bloom filters to read over network.
 )", 0) \

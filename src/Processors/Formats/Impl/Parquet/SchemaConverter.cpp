@@ -731,17 +731,35 @@ void SchemaConverter::processPrimitiveColumn(
     chassert(!out_inferred_type && !out_decoded_type);
     out_decoder.physical_type = type;
 
-    auto get_output_type_index = [&]
+    auto get_output_type = [&]() -> const IDataType &
     {
         chassert(out_inferred_type);
-        return type_hint ? type_hint->getTypeId() : out_inferred_type->getTypeId();
+        return type_hint ? *type_hint : *out_inferred_type;
+    };
+
+    auto get_output_type_index = [&]
+    {
+        return get_output_type().getTypeId();
     };
 
     auto dispatch_int_stats_converter = [&](bool allow_datetime_and_ipv4, IntConverter & converter) -> bool
     {
         WhichDataType which(get_output_type_index());
         if (which.isNativeInteger())
+        {
             converter.field_signed = which.isNativeInt();
+
+            /// Statistics endpoints are ordered as the stored type, so they bound the output column only
+            /// if the cast to it preserves that order for every stored value, not just the ones present.
+            const size_t stored_bits = type == parq::Type::BOOLEAN
+                ? 1 : converter.output_size.value_or(converter.input_size) * 8;
+            const size_t output_bits = get_output_type().getSizeOfValueInMemory() * 8;
+            const bool order_preserved = converter.input_signed == converter.field_signed
+                ? output_bits >= stored_bits
+                : !converter.input_signed && output_bits > stored_bits;
+            if (!order_preserved)
+                return false;
+        }
         else switch (which.idx)
         {
             case TypeIndex::IPv4:
@@ -811,7 +829,6 @@ void SchemaConverter::processPrimitiveColumn(
         bool found = true;
         switch (type)
         {
-            case parq::Type::BOOLEAN: size = 1; break;
             case parq::Type::INT32: size = 4; break;
             case parq::Type::INT64: size = 8; break;
             case parq::Type::INT96: size = 12; break;
@@ -1032,6 +1049,9 @@ void SchemaConverter::processPrimitiveColumn(
         UInt32 scale = logical.__isset.DECIMAL ? logical.DECIMAL.scale : element.scale;
         precision = std::max(precision, scale);
 
+        /// Precision of the Decimal type exactly as wide as one decoded value. Legal parquet can
+        /// make it exceed `precision` (e.g. INT64 with precision 9), so it, not `precision`,
+        /// determines the width of the column we decode into.
         UInt32 max_precision = 0;
         if (type == parq::Type::INT32 || type == parq::Type::INT64)
         {
@@ -1100,8 +1120,15 @@ void SchemaConverter::processPrimitiveColumn(
             throw Exception(ErrorCodes::INCORRECT_DATA, "Parquet decimal type precision or scale is too big ({} digits) for physical type {}", precision, thriftToString(type));
 
         out_inferred_type = createDecimal<DataTypeDecimal>(precision, scale);
-        size_t output_size = out_inferred_type->getSizeOfValueInMemory();
-        out_decoder.allow_stats = is_output_type_decimal(output_size, scale);
+
+        /// Decode into a column as wide as the converter writes; castColumn then narrows it to the
+        /// declared precision, throwing DECIMAL_OVERFLOW for values that don't fit.
+        auto decoded_type = createDecimal<DataTypeDecimal>(max_precision, scale);
+        size_t decoded_size = decoded_type->getSizeOfValueInMemory();
+        if (decoded_size != out_inferred_type->getSizeOfValueInMemory())
+            out_decoded_type = std::move(decoded_type);
+
+        out_decoder.allow_stats = is_output_type_decimal(decoded_size, scale);
 
         return;
     }

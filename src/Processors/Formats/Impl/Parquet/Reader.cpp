@@ -173,9 +173,11 @@ parq::FileMetaData Reader::readFileMetaData(Prefetcher & prefetcher)
     if (file_size <= 8)
         throw Exception(ErrorCodes::INCORRECT_DATA, "Parquet file too short: {} bytes", file_size);
 
-    /// Read the last 64 KiB in hopes that FileMetaData is smaller than that.
-    /// This is usually enough for files smaller than a few hundred MB.
-    size_t initial_read_size = std::min(file_size, 64ul << 10);
+    /// A second read of a local file is cheap. Elsewhere a tail sized to the file (1%, clamped to
+    /// [128 KiB, 2 MiB]) usually covers the whole footer in one round trip.
+    size_t initial_read_size = prefetcher.isLocalFile()
+        ? std::min(file_size, 64ul << 10)
+        : std::min(file_size, std::clamp<size_t>(file_size / 100, 128ul << 10, 2ul << 20));
     PODArray<char> buf(initial_read_size);
     prefetcher.readSync(buf.data(), initial_read_size, file_size - initial_read_size);
 
@@ -332,8 +334,10 @@ void Reader::prefilterAndInitRowGroups(const std::optional<std::unordered_set<UI
         for (size_t idx_in_output_block : format_filter_info->key_condition->getUsedColumns())
         {
             const auto & output_idx = sample_block_to_output_columns_idx.at(idx_in_output_block);
+            /// No file-readable column for this key-condition column: it has no column-chunk
+            /// stats, so it cannot prune. Skip it (its range stays the whole universe).
             if (!output_idx.has_value())
-                throw Exception(ErrorCodes::LOGICAL_ERROR, "KeyCondition uses PREWHERE output");
+                continue;
             const OutputColumnInfo & output_info = output_columns[output_idx.value()];
 
             if (output_info.is_primitive)
@@ -759,7 +763,10 @@ void Reader::processBloomFilterHeader(ColumnChunk & column, const PrimitiveColum
     size_t base_offset = column.meta->meta_data.bloom_filter_offset + header_size;
     for (size_t block_idx : block_idxs)
         subranges.emplace_back(base_offset + block_idx * bytes_per_block, bytes_per_block);
-    auto prefetches = prefetcher.splitRange(std::move(column.bloom_filter_data_prefetch), subranges, /*likely_to_be_used*/ false);
+
+    std::vector<PrefetchHandle> prefetches;
+    if (!subranges.empty()) // can be empty e.g. if `WHERE x IN ()`
+        prefetches = prefetcher.splitRange(std::move(column.bloom_filter_data_prefetch), subranges, /*likely_to_be_used*/ false);
 
     column.bloom_filter_blocks.reserve(block_idxs.size());
     for (size_t i = 0; i < block_idxs.size(); ++i)
@@ -1092,6 +1099,10 @@ void Reader::decodeOffsetIndex(ColumnChunk & column, const RowGroup & row_group)
         });
     int64_t num_rows = row_group.meta->num_rows;
 
+    /// A column chunk covers all rows of its row group, so the first page starts at row 0.
+    if (locations.front().first_row_index != 0)
+        throw Exception(ErrorCodes::INCORRECT_DATA, "Invalid offset index: first page starts at row {}, expected 0", locations.front().first_row_index);
+
     int64_t prev_offset = meta.data_page_offset;
     int64_t prev_row_index = -1;
     for (const auto & loc : locations)
@@ -1338,7 +1349,9 @@ void Reader::decodePrimitiveColumn(ColumnChunk & column, const PrimitiveColumnIn
     if (subchunk.null_map && !column_info.output_nullable && !options.format.null_as_default)
     {
         const auto & null_map = assert_cast<const ColumnUInt8 &>(*subchunk.null_map).getData();
-        if (memchr(null_map.data(), 0, null_map.size()) != nullptr)
+        /// null_map uses standard ClickHouse convention: 1 = NULL, 0 = NOT NULL.
+        /// Check if any values are null; those can't be inserted into a non-Nullable column.
+        if (memchr(null_map.data(), 1, null_map.size()) != nullptr)
             throw Exception(ErrorCodes::CANNOT_INSERT_NULL_IN_ORDINARY_COLUMN, "Cannot convert NULL value to non-Nullable type for column {}", column_info.name);
         subchunk.null_map = nullptr;
     }
@@ -1404,7 +1417,7 @@ void Reader::skipToRowOrNextPage(std::optional<size_t> row_idx, ColumnChunk & co
         auto data = prefetcher.getRangeData(page_info.prefetch);
         const char * ptr = data.data();
         if (!initializeDataPage(ptr, ptr + data.size(), first_row_idx, page_info.end_row_idx, *row_idx, column, column_info))
-            throw Exception(ErrorCodes::LOGICAL_ERROR, "Page doesn't contain requested row");
+            throw Exception(ErrorCodes::INCORRECT_DATA, "Page doesn't contain requested row");
         found_page = true;
     }
 
