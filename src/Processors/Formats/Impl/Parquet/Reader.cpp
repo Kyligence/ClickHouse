@@ -406,8 +406,10 @@ void Reader::prefilterAndInitRowGroups(const std::optional<std::unordered_set<UI
         for (const auto & [idx_in_output_block, key_condition] : column_conditions)
         {
             const auto & output_idx = sample_block_to_output_columns_idx.at(idx_in_output_block);
+            /// No file-readable column for this key-condition column: it has no page-index
+            /// stats, so it cannot prune. Skip it (page-level pruning is disabled for it).
             if (!output_idx.has_value())
-                throw Exception(ErrorCodes::LOGICAL_ERROR, "Column condition uses PREWHERE output");
+                continue;
             const OutputColumnInfo & output_info = output_columns[output_idx.value()];
 
             if (!output_info.is_primitive)
