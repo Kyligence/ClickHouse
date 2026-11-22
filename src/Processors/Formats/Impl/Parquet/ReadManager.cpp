@@ -59,8 +59,24 @@ void ReadManager::init(FormatParserSharedResourcesPtr parser_shared_resources_, 
     reader.prefilterAndInitRowGroups(row_groups_to_read);
     reader.preparePrewhere();
 
-    ProfileEvents::increment(ProfileEvents::ParquetReadRowGroups, reader.row_groups.size());
-    ProfileEvents::increment(ProfileEvents::ParquetPrunedRowGroups, reader.file_metadata.row_groups.size() - reader.row_groups.size());
+    /// Row groups that are not in `row_groups_to_read` (e.g. Spark splits passed through
+    /// setBucketsToRead in Gluten) are not read by this reader, they are read by other readers.
+    /// Count only the row groups we actually process, and only treat the existing row groups of
+    /// our own buckets as "considered" for the pruned metric.
+    size_t num_row_groups_to_read = 0;
+    for (const RowGroup & row_group : reader.row_groups)
+        num_row_groups_to_read += size_t(row_group.need_to_process);
+
+    size_t num_row_groups_to_consider = reader.file_metadata.row_groups.size();
+    if (row_groups_to_read)
+    {
+        num_row_groups_to_consider = 0;
+        for (UInt64 row_group_idx : *row_groups_to_read)
+            num_row_groups_to_consider += row_group_idx < reader.file_metadata.row_groups.size();
+    }
+
+    ProfileEvents::increment(ProfileEvents::ParquetReadRowGroups, num_row_groups_to_read);
+    ProfileEvents::increment(ProfileEvents::ParquetPrunedRowGroups, num_row_groups_to_consider - num_row_groups_to_read);
 
     size_t num_row_groups = reader.row_groups.size();
     for (size_t i = size_t(ReadStage::NotStarted) + 1; i < size_t(ReadStage::Deliver); ++i)
@@ -90,9 +106,13 @@ void ReadManager::init(FormatParserSharedResourcesPtr parser_shared_resources_, 
         stage.memory_target_fraction /= sum;
 
     /// The NotStarted stage completed for all row groups, transition to next stage.
+    /// Row groups not selected by setBucketsToRead() go straight to deallocation: their subgroups
+    /// are never initialized and they have no rows to deliver. Otherwise the bloom-filter and
+    /// column/offset-index stages below would read metadata for every row group of the file in
+    /// every reader, even though only the ones in this reader's split are used.
     MemoryUsageDiff diff(ReadStage::NotStarted);
     for (size_t i = 0; i < reader.row_groups.size(); ++i)
-        finishRowGroupStage(i, ReadStage::NotStarted, diff);
+        finishRowGroupStage(i, reader.row_groups[i].need_to_process ? ReadStage::NotStarted : ReadStage::Deliver, diff);
     flushMemoryUsageDiff(std::move(diff));
 }
 

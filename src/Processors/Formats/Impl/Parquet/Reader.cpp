@@ -700,6 +700,18 @@ void Reader::preparePrewhere()
                 throw Exception(ErrorCodes::LOGICAL_ERROR, "PREWHERE appears to use its own output as input");
             OutputColumnInfo & output_info = output_columns[output_idx.value()];
 
+            /// The column is not in the parquet file, e.g. a partition column (the local engine
+            /// materializes those as constants only after the file read) or a column added to the
+            /// table by schema evolution. PREWHERE would silently compare it against the default
+            /// value of a missing column and return wrong rows, so fail loudly instead. Such a
+            /// filter has to be applied on top of the scan (FilterRel), not in the reader.
+            if (output_info.is_missing_column)
+                throw Exception(
+                    ErrorCodes::LOGICAL_ERROR,
+                    "PREWHERE filter references column '{}' which is not present in the parquet file. "
+                    "The filter must be evaluated on top of the scan, not inside the parquet reader.",
+                    col.name);
+
             output_info.use_prewhere = true;
             bool only_for_prewhere = idx_in_output_block >= sample_block->columns();
 
